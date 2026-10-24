@@ -515,6 +515,7 @@ function startRealtimeStream() {
 function renderCurrentTab() {
     const container = document.getElementById("contentContainer");
     if (!container) return;
+    container.classList.toggle("app-update-content", currentTab === "app_updates");
 
     const activeElement = document.activeElement;
     const focusedInput = container.contains(activeElement) && activeElement instanceof HTMLInputElement
@@ -1039,81 +1040,164 @@ async function testAllBotNodes() {
 
 // TAB 7: APP UPDATE AND ANNOUNCEMENT PUBLISHER
 function renderAppUpdates(container) {
-    const updateError = firestoreErrors["app-update"];
+    const updateError = firestoreErrors["app-update"] || firestoreErrors.config;
     const data = appUpdateData;
     const announcementEnabled = data.announcementEnabled ?? Boolean(data.announcementBanner);
     const maintenanceMode = data.maintenanceMode ?? (appConfigData.maintenance_mode === true);
     container.innerHTML = `
-        <section class="app-update-card">
-            <div class="app-update-heading">
-                <div class="app-update-icon"><i class="fa-solid fa-bullhorn"></i></div>
+        <section class="app-update-screen">
+            <header class="app-update-heading">
+                <div class="app-update-icon"><i class="fa-solid fa-sliders"></i></div>
                 <div>
                     <p class="module-eyebrow">Remote configuration</p>
-                    <h3>Featured Update & Announcement</h3>
-                    <p class="module-description">Manage app updates, announcements, and maintenance mode.</p>
+                    <h3>App Update Manager</h3>
+                    <p class="module-description">Manage app releases, in-app announcements, and service availability.</p>
                 </div>
-            </div>
+            </header>
             ${updateError ? `<div class="firestore-error" role="alert"><strong>${escapeHtml(updateError.title)}</strong><p>${escapeHtml(updateError.details)}</p></div>` : ""}
             ${!appUpdateLoaded ? '<p class="update-sync-note" role="status"><i class="fa-solid fa-spinner fa-spin"></i> Connecting to live update settings...</p>' : ""}
             <form id="appUpdateForm" class="app-update-form">
-                <label class="update-field">
-                    <span>Version Code</span>
-                    <input id="updateLatestVersionCode" name="latestVersionCode" type="number" min="1" step="1" required value="${escapeHtml(data.latestVersionCode ?? "")}" placeholder="5">
-                </label>
-                <label class="update-field">
-                    <span>Version Name</span>
-                    <input id="updateVersionName" name="versionName" type="text" required maxlength="40" value="${escapeHtml(data.versionName ?? "")}" placeholder="1.1.3">
-                </label>
-                <label class="update-field">
-                    <span>Minimum Supported Version</span>
-                    <input id="updateMinimumSupportedVersion" name="minimumSupportedVersion" type="number" min="0" step="1" required value="${escapeHtml(data.minimumSupportedVersion ?? "")}" placeholder="4">
-                </label>
-                <label class="update-field update-toggle-field">
-                    <span>
-                        <strong>Force Update</strong>
-                        <small>Block older versions until users update.</small>
-                    </span>
-                    <input id="updateForceUpdate" name="forceUpdate" type="checkbox" role="switch" aria-label="Force Update" ${data.forceUpdate === true ? "checked" : ""}>
-                </label>
-                <label class="update-field update-toggle-field">
-                    <span>
-                        <strong>Announcement</strong>
-                        <small>Show the announcement text in the app.</small>
-                    </span>
-                    <input id="updateAnnouncementEnabled" name="announcementEnabled" type="checkbox" role="switch" aria-label="Announcement" ${announcementEnabled ? "checked" : ""}>
-                </label>
-                <label class="update-field update-toggle-field">
-                    <span>
-                        <strong>Maintenance Mode</strong>
-                        <small>Temporarily restrict app access for maintenance.</small>
-                    </span>
-                    <input id="updateMaintenanceMode" name="maintenanceMode" type="checkbox" role="switch" aria-label="Maintenance Mode" ${maintenanceMode ? "checked" : ""}>
-                </label>
-                <label class="update-field update-field-wide">
-                    <span>Title</span>
-                    <input id="updateDialogTitle" name="dialogTitle" type="text" required maxlength="120" value="${escapeHtml(data.dialogTitle ?? "")}" placeholder="Google Sign-In &amp; Performance Fix">
-                </label>
-                <label class="update-field update-field-wide">
-                    <span>Notes</span>
-                    <textarea id="updateReleaseNotes" name="releaseNotes" rows="5" maxlength="4000" placeholder="Add release notes shown in the update dialog.">${escapeHtml(data.releaseNotes ?? "")}</textarea>
-                </label>
-                <label class="update-field update-field-wide">
-                    <span>Announcement Text</span>
-                    <input id="updateAnnouncementBanner" name="announcementBanner" type="text" maxlength="240" value="${escapeHtml(data.announcementBanner ?? "")}" placeholder="Get Anant PRO 50% Off this week!">
-                </label>
-                <div class="update-form-footer update-field-wide">
-                    <p class="update-sync-note"><i class="fa-solid fa-tower-broadcast"></i> Live documents: <code>app_config/app_update</code> and <code>app_config/global</code></p>
-                    <button class="primary-action publish-update-button" type="submit" ${isPublishingAppUpdate ? "disabled" : ""}>
+                <section class="app-update-card settings-card">
+                    <header class="settings-card-header">
+                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="updateCardPanel">
+                            <span class="settings-card-icon"><i class="fa-solid fa-code-branch" aria-hidden="true"></i></span>
+                            <span class="settings-card-heading">
+                                <strong>App Update &amp; Version Control</strong>
+                                <small>Configure the release users will receive.</small>
+                            </span>
+                            <i class="fa-solid fa-chevron-down card-chevron" aria-hidden="true"></i>
+                        </button>
+                        <label class="switch-control">
+                            <input id="updateForceUpdate" name="forceUpdate" type="checkbox" role="switch" aria-label="Force Update" ${data.forceUpdate === true ? "checked" : ""}>
+                            <span class="switch-track" aria-hidden="true"></span>
+                            <span class="switch-state" aria-hidden="true">${data.forceUpdate === true ? "On" : "Off"}</span>
+                        </label>
+                    </header>
+                    <div class="settings-card-panel" id="updateCardPanel" aria-hidden="false">
+                        <div class="settings-card-panel-inner">
+                            <div class="settings-card-content">
+                                <div class="update-field-grid">
+                                    <label class="update-field">
+                                        <span>Version Code</span>
+                                        <input id="updateLatestVersionCode" name="latestVersionCode" type="number" min="1" step="1" required value="${escapeHtml(data.latestVersionCode ?? "")}" placeholder="5">
+                                    </label>
+                                    <label class="update-field">
+                                        <span>Version Name</span>
+                                        <input id="updateVersionName" name="versionName" type="text" required maxlength="40" value="${escapeHtml(data.versionName ?? "")}" placeholder="1.1.3">
+                                    </label>
+                                    <label class="update-field">
+                                        <span>Minimum Supported Version</span>
+                                        <input id="updateMinimumSupportedVersion" name="minimumSupportedVersion" type="number" min="0" step="1" required value="${escapeHtml(data.minimumSupportedVersion ?? "")}" placeholder="4">
+                                    </label>
+                                    <label class="update-field">
+                                        <span>Update Dialog Title</span>
+                                        <input id="updateDialogTitle" name="dialogTitle" type="text" required maxlength="120" value="${escapeHtml(data.dialogTitle ?? "")}" placeholder="Google Sign-In &amp; Performance Fix">
+                                    </label>
+                                    <label class="update-field update-field-wide">
+                                        <span>Release Notes</span>
+                                        <textarea id="updateReleaseNotes" name="releaseNotes" rows="5" maxlength="4000" placeholder="Add release notes shown in the update dialog.">${escapeHtml(data.releaseNotes ?? "")}</textarea>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="app-update-card settings-card announcement-card">
+                    <header class="settings-card-header">
+                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="announcementCardPanel">
+                            <span class="settings-card-icon"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i></span>
+                            <span class="settings-card-heading">
+                                <strong>In-App Announcement</strong>
+                                <small>Share a timely message with app users.</small>
+                            </span>
+                            <i class="fa-solid fa-chevron-down card-chevron" aria-hidden="true"></i>
+                        </button>
+                        <label class="switch-control">
+                            <input id="updateAnnouncementEnabled" name="announcementEnabled" type="checkbox" role="switch" aria-label="Announcement Banner" ${announcementEnabled ? "checked" : ""}>
+                            <span class="switch-track" aria-hidden="true"></span>
+                            <span class="switch-state" aria-hidden="true">${announcementEnabled ? "On" : "Off"}</span>
+                        </label>
+                    </header>
+                    <div class="settings-card-panel" id="announcementCardPanel" aria-hidden="false">
+                        <div class="settings-card-panel-inner">
+                            <div class="settings-card-content">
+                                <div class="announcement-expansion ${announcementEnabled ? "" : "is-collapsed"}" id="announcementTextPanel" aria-hidden="${!announcementEnabled}" ${announcementEnabled ? "" : "inert"}>
+                                    <div class="announcement-expansion-inner">
+                                        <label class="update-field">
+                                            <span>Announcement Text</span>
+                                            <input id="updateAnnouncementBanner" name="announcementBanner" type="text" maxlength="240" value="${escapeHtml(data.announcementBanner ?? "")}" placeholder="Get Anant PRO 50% Off this week!">
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="app-update-card settings-card">
+                    <header class="settings-card-header">
+                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="maintenanceCardPanel">
+                            <span class="settings-card-icon"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i></span>
+                            <span class="settings-card-heading">
+                                <strong>Maintenance Mode</strong>
+                                <small>Temporarily restrict app access for maintenance.</small>
+                            </span>
+                            <i class="fa-solid fa-chevron-down card-chevron" aria-hidden="true"></i>
+                        </button>
+                        <label class="switch-control">
+                            <input id="updateMaintenanceMode" name="maintenanceMode" type="checkbox" role="switch" aria-label="Maintenance Mode" ${maintenanceMode ? "checked" : ""}>
+                            <span class="switch-track" aria-hidden="true"></span>
+                            <span class="switch-state" aria-hidden="true">${maintenanceMode ? "On" : "Off"}</span>
+                        </label>
+                    </header>
+                    <div class="settings-card-panel" id="maintenanceCardPanel" aria-hidden="false">
+                        <div class="settings-card-panel-inner">
+                            <div class="settings-card-content">
+                                <label class="update-field">
+                                    <span>Maintenance Message <small class="optional-label">Optional</small></span>
+                                    <textarea id="updateMaintenanceMessage" name="maintenanceMessage" rows="3" maxlength="500" placeholder="Let users know when service will be available again.">${escapeHtml(data.maintenanceMessage ?? "")}</textarea>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <footer class="update-form-footer">
+                    <p class="update-sync-note"><i class="fa-solid fa-tower-broadcast"></i> Publishing to <code>app_config/app_update</code> and <code>app_config/global</code></p>
+                    <button class="primary-action publish-update-button" type="submit" ${isPublishingAppUpdate || !appUpdateLoaded ? "disabled" : ""}>
                         <i class="fa-solid fa-cloud-arrow-up"></i> ${isPublishingAppUpdate ? "Publishing..." : "Save & Publish"}
                     </button>
-                </div>
+                </footer>
             </form>
         </section>
     `;
 
     const form = document.getElementById("appUpdateForm");
     form?.addEventListener("input", () => { appUpdateFormDirty = true; });
-    form?.addEventListener("change", () => { appUpdateFormDirty = true; });
+    form?.addEventListener("change", event => {
+        appUpdateFormDirty = true;
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+        const switchState = target.closest(".switch-control")?.querySelector(".switch-state");
+        if (switchState) switchState.textContent = target.checked ? "On" : "Off";
+        if (target.id === "updateAnnouncementEnabled") {
+            const textPanel = document.getElementById("announcementTextPanel");
+            textPanel?.classList.toggle("is-collapsed", !target.checked);
+            textPanel?.setAttribute("aria-hidden", String(!target.checked));
+            textPanel?.toggleAttribute("inert", !target.checked);
+        }
+    });
+    form?.querySelectorAll("[data-card-toggle]").forEach(button => {
+        button.addEventListener("click", () => {
+            const panel = button.closest(".settings-card")?.querySelector(".settings-card-panel");
+            const isExpanded = button.getAttribute("aria-expanded") === "true";
+            button.setAttribute("aria-expanded", String(!isExpanded));
+            button.closest(".settings-card")?.classList.toggle("is-collapsed", isExpanded);
+            panel?.setAttribute("aria-hidden", String(isExpanded));
+            if (panel) panel.toggleAttribute("inert", isExpanded);
+        });
+    });
     form?.addEventListener("submit", publishAppUpdate);
 }
 
@@ -1143,6 +1227,7 @@ async function publishAppUpdate(event) {
         releaseNotes: String(formData.get("releaseNotes") || "").trim(),
         announcementBanner: String(formData.get("announcementBanner") || "").trim(),
         maintenanceMode: formData.get("maintenanceMode") === "on",
+        maintenanceMessage: String(formData.get("maintenanceMessage") || "").trim(),
         updatedAt: serverTimestamp()
     };
 
