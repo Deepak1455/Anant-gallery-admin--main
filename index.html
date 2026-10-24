@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -18,6 +18,15 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <link rel="stylesheet" href="admin.css">
+    <style>
+        :root {
+            --bg-dark: #000;
+            --bg-card: #080808;
+            --bg-surface: #111;
+        }
+
+        html, body { background: #000; }
+    </style>
 </head>
 <body>
 
@@ -40,7 +49,7 @@
                 <span>Sign in with Admin Google</span>
             </button>
 
-            <div class="auth-divider"><span>--- OR USE MASTER PIN ---</span></div>
+            <div class="auth-divider"><span>--- OR USE MASTER PIN / FINGERPRINT ---</span></div>
 
             <button type="button" class="btn-bio" id="btnAdminBio">
                 <i class="fa-solid fa-fingerprint"></i>

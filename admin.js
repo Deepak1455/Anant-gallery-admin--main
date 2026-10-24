@@ -88,7 +88,7 @@ function watchAdminAuthState() {
     onAuthStateChanged(auth, async user => {
         if (!user || user.isAnonymous) return;
         if (isAuthorizedAdmin(user)) {
-            showAdminWorkspace("Admin Access Granted");
+            showAdminWorkspace(`Admin Verified: ${user.email}`);
             return;
         }
 
@@ -246,7 +246,7 @@ async function initAuth() {
                     await rejectUnauthorizedUser();
                     return;
                 }
-                showAdminWorkspace("Admin Access Granted");
+                showAdminWorkspace(`Admin Verified: ${result.user.email}`);
             } catch (error) {
                 if (error.code === "auth/popup-blocked") {
                     try {
@@ -362,7 +362,7 @@ async function processGoogleRedirectResult() {
         const result = await getRedirectResult(auth);
         if (!result?.user) return;
         if (isAuthorizedAdmin(result.user)) {
-            showAdminWorkspace("Admin Access Granted");
+            showAdminWorkspace(`Admin Verified: ${result.user.email}`);
         } else {
             await rejectUnauthorizedUser();
         }
