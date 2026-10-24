@@ -37,6 +37,7 @@ const AUTHORIZED_ADMINS = [
 ];
 
 let currentTab = "dashboard";
+let userFilter = "";
 let photosData = [];
 let fallbackPhotosData = [];
 let albumsData = [];
@@ -47,6 +48,9 @@ const firestoreErrors = {};
 let unsubscribePhotoFallback = null;
 let realtimeStreamStarted = false;
 let unauthorizedSignOutInProgress = false;
+let isPurgingTrash = false;
+let lightboxPhotoPath = null;
+let lightboxZoom = 1;
 
 function isAuthorizedAdmin(user) {
     return Boolean(user?.email && AUTHORIZED_ADMINS.includes(user.email.trim().toLowerCase()));
@@ -180,7 +184,7 @@ function toast(msg) {
 }
 
 // Confirmation Dialog Modal
-function confirmAction(title, desc, onConfirm) {
+function confirmAction(title, desc, onConfirm, confirmLabel = "Confirm") {
     const modal = document.getElementById("adminModal");
     if (!modal) {
         if (confirm(title + "\n" + desc)) {
@@ -190,6 +194,7 @@ function confirmAction(title, desc, onConfirm) {
     }
     document.getElementById("modalTitle").innerText = title;
     document.getElementById("modalDesc").innerText = desc;
+    document.getElementById("btnModalConfirm").innerText = confirmLabel;
     modal.style.display = "flex";
 
     const close = () => { modal.style.display = "none"; };
@@ -206,6 +211,56 @@ function formatSize(bytes) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function formatDate(value) {
+    if (!value) return "Unknown date";
+    const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
+    return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString();
+}
+
+function getPhotoPath(photo) {
+    return photo.path || `user_photos/${photo.id}`;
+}
+
+function copyControl(value, label) {
+    const text = String(value ?? "");
+    return `
+        <span class="copy-value">
+            <span class="truncate-value" title="${escapeHtml(text)}">${escapeHtml(text)}</span>
+            <button class="copy-btn" type="button" title="Copy ${escapeHtml(label)}" aria-label="Copy ${escapeHtml(label)}"
+                onclick="window.adminCopy(${inlineArg(text)}, ${inlineArg(label)})">
+                <i class="fa-regular fa-copy" aria-hidden="true"></i>
+            </button>
+        </span>
+    `;
+}
+
+function photoStatus(photo) {
+    return `<span class="tag ${photo.isDeleted ? "trash" : (photo.isHidden ? "hidden" : "active")}">${photo.isDeleted ? "Trash" : (photo.isHidden ? "Private" : "Active")}</span>`;
+}
+
+function photoCard(photo) {
+    const path = getPhotoPath(photo);
+    const uid = photo.uid || "Anonymous";
+    const date = photo.createdAt || photo.timestamp || photo.date || photo.uploadedAt;
+    return `
+        <article class="data-card photo-card">
+            <button class="photo-card-image" type="button" onclick="window.adminPreviewPhoto(${inlineArg(path)})" aria-label="Preview photo ${escapeHtml(photo.id)}">
+                <img src="${escapeHtml(getPhotoImage(photo))}" alt="" loading="lazy" onerror="this.src='https://via.placeholder.com/120?text=Photo'">
+            </button>
+            <div class="data-card-body">
+                <div class="data-card-heading">${photoStatus(photo)}</div>
+                <div class="data-field"><span>Photo ID</span>${copyControl(photo.id, "photo ID")}</div>
+                <div class="data-field"><span>User UID</span>${copyControl(uid, "user UID")}</div>
+                <div class="data-card-stats"><span>${formatSize(photo.fileSize || 0)}</span><span>${escapeHtml(formatDate(date))}</span></div>
+                <div class="data-card-actions">
+                    <button class="secondary-action" type="button" onclick="window.adminPreviewPhoto(${inlineArg(path)})"><i class="fa-solid fa-eye"></i> Preview</button>
+                    <button class="action-btn del" type="button" aria-label="Delete photo" onclick="window.adminDeletePhoto(${inlineArg(path)})"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>
+        </article>
+    `;
 }
 
 // --------------------------------------------------------------------------
@@ -440,18 +495,31 @@ function renderCurrentTab() {
     const container = document.getElementById("contentContainer");
     if (!container) return;
 
+    const activeElement = document.activeElement;
+    const focusedInput = container.contains(activeElement) && activeElement instanceof HTMLInputElement
+        ? { id: activeElement.id, start: activeElement.selectionStart, end: activeElement.selectionEnd }
+        : null;
+
     if (currentTab === "dashboard") renderDashboard(container);
     else if (currentTab === "photos") renderPhotos(container);
     else if (currentTab === "users") renderUsers(container);
     else if (currentTab === "albums") renderAlbums(container);
     else if (currentTab === "settings") renderSettings(container);
+
+    if (focusedInput?.id) {
+        const replacement = document.getElementById(focusedInput.id);
+        replacement?.focus({ preventScroll: true });
+        if (replacement instanceof HTMLInputElement && focusedInput.start !== null && focusedInput.end !== null) {
+            replacement.setSelectionRange(focusedInput.start, focusedInput.end);
+        }
+    }
 }
 
 // TAB 1: DASHBOARD
 function renderDashboard(container) {
     const allPhotos = getAllPhotos();
     const totalPhotos = allPhotos.length;
-    const inTrash = allPhotos.filter(p => p.isDeleted).length;
+    const inTrash = photosData.filter(p => p.isDeleted === true).length;
     const totalSize = allPhotos.reduce((a, b) => a + (b.fileSize || 3.5 * 1024 * 1024), 0);
     const usersCount = new Set([
         ...Object.keys(usersProfileData),
@@ -497,11 +565,21 @@ function renderDashboard(container) {
             </div>
         </div>
 
+        <div class="dashboard-actions">
+            <div>
+                <h3>Cloud trash</h3>
+                <p>${inTrash} deleted ${inTrash === 1 ? "photo" : "photos"} ready to permanently remove</p>
+            </div>
+            <button class="danger-action" id="purgeTrashBtn" type="button" ${inTrash === 0 || isPurgingTrash ? "disabled" : ""}>
+                <i class="fa-solid fa-trash-can"></i> ${isPurgingTrash ? "Emptying trash..." : "Empty Cloud Trash"}
+            </button>
+        </div>
+
         <div class="table-board">
             <div class="t-header">
                 <h3><i class="fa-solid fa-clock-rotate-left" style="color:var(--accent);"></i> Recent 8 Cloud Uploads</h3>
             </div>
-            <div style="overflow-x:auto;">
+            <div class="desktop-table-wrap">
                 <table class="admin-table">
                     <thead>
                         <tr>
@@ -515,24 +593,24 @@ function renderDashboard(container) {
                     <tbody>
                         ${allPhotos.slice(0, 8).map(p => `
                             <tr>
-                                <td><img src="${escapeHtml(getPhotoImage(p))}" class="table-img" onerror="this.src='https://via.placeholder.com/50'"></td>
-                                <td style="font-family:monospace; font-size:0.75rem;">${escapeHtml(p.id)}</td>
-                                <td style="font-family:monospace; font-size:0.75rem;">${escapeHtml(p.uid || 'Anonymous')}</td>
+                                <td><button class="table-preview" type="button" onclick="window.adminPreviewPhoto(${inlineArg(getPhotoPath(p))})" aria-label="Preview photo ${escapeHtml(p.id)}"><img src="${escapeHtml(getPhotoImage(p))}" class="table-img" alt="" onerror="this.src='https://via.placeholder.com/50'"></button></td>
+                                <td>${copyControl(p.id, "photo ID")}</td>
+                                <td>${copyControl(p.uid || 'Anonymous', "user UID")}</td>
+                                <td>${photoStatus(p)}</td>
                                 <td>
-                                    <span class="tag ${p.isDeleted ? 'trash' : (p.isHidden ? 'hidden' : 'active')}">
-                                        ${p.isDeleted ? 'Trash' : (p.isHidden ? 'Private' : 'Active')}
-                                    </span>
-                                </td>
-                                <td>
-                                    <button class="action-btn del" onclick="window.adminDeletePhoto(${inlineArg(p.path || `user_photos/${p.id}`)})"><i class="fa-solid fa-trash"></i></button>
+                                    <button class="action-btn del" type="button" onclick="window.adminDeletePhoto(${inlineArg(getPhotoPath(p))})"><i class="fa-solid fa-trash"></i></button>
                                 </td>
                             </tr>
                         `).join('')}
                     </tbody>
                 </table>
             </div>
+            <div class="mobile-card-list">
+                ${allPhotos.length ? allPhotos.slice(0, 8).map(photoCard).join("") : '<p class="empty-state">No cloud photos yet.</p>'}
+            </div>
         </div>
     `;
+    document.getElementById("purgeTrashBtn")?.addEventListener("click", () => window.adminPurgeTrash());
 }
 
 // TAB 2: PHOTOS DIRECTORY
@@ -543,10 +621,10 @@ function renderPhotos(container) {
             <div class="t-header">
                 <h3><i class="fa-solid fa-images" style="color:var(--accent);"></i> All Cloud Photos (${allPhotos.length})</h3>
                 <div class="search-box">
-                    <input type="text" id="photoFilter" placeholder="Search by Doc ID or UID...">
+                    <input type="search" id="photoFilter" placeholder="Search by photo ID or UID..." aria-label="Search photos by ID or user UID">
                 </div>
             </div>
-            <div style="overflow-x:auto;">
+            <div class="desktop-table-wrap">
                 <table class="admin-table">
                     <thead>
                         <tr>
@@ -558,35 +636,37 @@ function renderPhotos(container) {
                         </tr>
                     </thead>
                     <tbody id="photoRows">
-                        ${renderPhotoList(allPhotos)}
+                        ${renderPhotoTableRows(allPhotos)}
                     </tbody>
                 </table>
             </div>
+            <div class="mobile-card-list" id="photoCards">${renderPhotoCards(allPhotos)}</div>
         </div>
     `;
 
     document.getElementById("photoFilter")?.addEventListener("input", (e) => {
         const q = e.target.value.toLowerCase().trim();
-        const filtered = getAllPhotos().filter(p => p.id.toLowerCase().includes(q) || (p.uid && p.uid.toLowerCase().includes(q)));
-        document.getElementById("photoRows").innerHTML = renderPhotoList(filtered);
+        const filtered = getAllPhotos().filter(p => String(p.id).toLowerCase().includes(q) || String(p.uid || "").toLowerCase().includes(q));
+        document.getElementById("photoRows").innerHTML = renderPhotoTableRows(filtered);
+        document.getElementById("photoCards").innerHTML = renderPhotoCards(filtered);
     });
 }
 
-function renderPhotoList(list) {
+function renderPhotoCards(list) {
+    return list.length ? list.map(photoCard).join("") : '<p class="empty-state">No photos found.</p>';
+}
+
+function renderPhotoTableRows(list) {
     if (list.length === 0) return `<tr><td colspan="5" style="text-align:center; padding:30px;">No photos found.</td></tr>`;
     return list.map(p => `
         <tr>
-            <td><img src="${escapeHtml(getPhotoImage(p))}" class="table-img" onerror="this.src='https://via.placeholder.com/50'"></td>
-            <td style="font-family:monospace; font-size:0.75rem;">${escapeHtml(p.id)}</td>
-            <td style="font-family:monospace; font-size:0.75rem;">${escapeHtml(p.uid || 'Anonymous')}</td>
+            <td><button class="table-preview" type="button" onclick="window.adminPreviewPhoto(${inlineArg(getPhotoPath(p))})" aria-label="Preview photo ${escapeHtml(p.id)}"><img src="${escapeHtml(getPhotoImage(p))}" class="table-img" alt="" onerror="this.src='https://via.placeholder.com/50'"></button></td>
+            <td>${copyControl(p.id, "photo ID")}</td>
+            <td>${copyControl(p.uid || 'Anonymous', "user UID")}</td>
+            <td>${photoStatus(p)}</td>
             <td>
-                <span class="tag ${p.isDeleted ? 'trash' : (p.isHidden ? 'hidden' : 'active')}">
-                    ${p.isDeleted ? 'Trash' : (p.isHidden ? 'Private' : 'Active')}
-                </span>
-            </td>
-            <td>
-                <button class="action-btn" onclick="window.open(${inlineArg(getPhotoImage(p))}, '_blank', 'noopener')"><i class="fa-solid fa-eye"></i></button>
-                <button class="action-btn del" onclick="window.adminDeletePhoto(${inlineArg(p.path || `user_photos/${p.id}`)})"><i class="fa-solid fa-trash"></i></button>
+                <button class="action-btn" type="button" onclick="window.adminPreviewPhoto(${inlineArg(getPhotoPath(p))})"><i class="fa-solid fa-eye"></i></button>
+                <button class="action-btn del" type="button" onclick="window.adminDeletePhoto(${inlineArg(getPhotoPath(p))})"><i class="fa-solid fa-trash"></i></button>
             </td>
         </tr>
     `).join('');
@@ -617,8 +697,11 @@ function renderUsers(container) {
         <div class="table-board">
             <div class="t-header">
                 <h3><i class="fa-solid fa-users" style="color:var(--accent);"></i> Registered Users & Pro Membership (${userList.length})</h3>
+                <div class="search-box">
+                    <input type="search" id="userFilter" value="${escapeHtml(userFilter)}" placeholder="Search email or UID..." aria-label="Search users by email or UID">
+                </div>
             </div>
-            <div style="overflow-x:auto;">
+            <div class="desktop-table-wrap">
                 <table class="admin-table">
                     <thead>
                         <tr>
@@ -633,22 +716,27 @@ function renderUsers(container) {
                         ${userList.map(u => {
                             const profile = usersProfileData[u.uid] || {};
                             const isPro = profile.isPro === true;
-                            const email = profile.email || u.uid;
+                            const email = profile.email || "Email unavailable";
+                            const searchValue = `${email} ${u.uid}`.toLowerCase();
                             return `
-                                <tr>
-                                    <td style="font-family:monospace; font-weight:700;">${escapeHtml(email)}</td>
+                                <tr data-user-search="${escapeHtml(searchValue)}">
+                                    <td>
+                                        <div class="user-identity">
+                                            <strong>${copyControl(email, "email")}</strong>
+                                            ${copyControl(u.uid, "user UID")}
+                                        </div>
+                                    </td>
                                     <td><span class="tag active">${u.count} Photos</span></td>
                                     <td>${formatSize(u.bytes)}</td>
                                     <td>
-                                        <span class="tag ${isPro ? 'active' : 'hidden'}" style="${isPro ? 'background:#8b5cf6;' : ''}">
+                                        <button class="membership-toggle tag ${isPro ? 'pro' : 'free'}" type="button"
+                                            aria-label="${isPro ? 'Revoke Anant PRO' : 'Grant Anant PRO'} for ${escapeHtml(u.uid)}"
+                                            onclick="window.adminTogglePro(${inlineArg(u.uid)}, ${!isPro})">
                                             ${isPro ? 'Anant PRO' : 'Free Tier'}
-                                        </span>
+                                        </button>
                                     </td>
                                     <td>
-                                        <button class="action-btn" style="background:${isPro ? '#ef4444' : '#10b981'}; width:auto; padding:6px 12px; font-size:0.75rem;" onclick="window.adminTogglePro(${inlineArg(u.uid)}, ${!isPro})">
-                                            ${isPro ? 'Revoke PRO' : 'Grant Anant PRO'}
-                                        </button>
-                                        <button class="action-btn del" onclick="window.adminWipeUser(${inlineArg(u.uid)})" title="Wipe User Data">
+                                        <button class="action-btn del" type="button" onclick="window.adminWipeUser(${inlineArg(u.uid)})" title="Wipe User Data" aria-label="Wipe data for ${escapeHtml(u.uid)}">
                                             <i class="fa-solid fa-trash-can"></i>
                                         </button>
                                     </td>
@@ -658,8 +746,51 @@ function renderUsers(container) {
                     </tbody>
                 </table>
             </div>
+            <div class="mobile-card-list" id="userCards">
+                ${userList.map(u => {
+                    const profile = usersProfileData[u.uid] || {};
+                    const isPro = profile.isPro === true;
+                    const email = profile.email || "Email unavailable";
+                    const searchValue = `${email} ${u.uid}`.toLowerCase();
+                    return `
+                        <article class="data-card user-card" data-user-search="${escapeHtml(searchValue)}">
+                            <div class="data-card-heading">
+                                <div class="user-card-title"><i class="fa-solid fa-user"></i><span>User account</span></div>
+                                <button class="membership-toggle tag ${isPro ? 'pro' : 'free'}" type="button"
+                                    aria-label="${isPro ? 'Revoke Anant PRO' : 'Grant Anant PRO'} for ${escapeHtml(u.uid)}"
+                                    onclick="window.adminTogglePro(${inlineArg(u.uid)}, ${!isPro})">
+                                    ${isPro ? 'Anant PRO' : 'Free Tier'}
+                                </button>
+                            </div>
+                            <div class="data-field"><span>Email</span>${copyControl(email, "email")}</div>
+                            <div class="data-field"><span>User UID</span>${copyControl(u.uid, "user UID")}</div>
+                            <div class="user-stats">
+                                <span><strong>${u.count}</strong> Photos</span>
+                                <span><strong>${formatSize(u.bytes)}</strong> Storage</span>
+                                <span><strong>${u.trash}</strong> Trash</span>
+                            </div>
+                            <div class="data-card-actions">
+                                <button class="secondary-action" type="button" onclick="window.adminTogglePro(${inlineArg(u.uid)}, ${!isPro})">
+                                    ${isPro ? "Revoke PRO" : "Grant PRO"}
+                                </button>
+                                <button class="action-btn del" type="button" onclick="window.adminWipeUser(${inlineArg(u.uid)})" aria-label="Wipe user data">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </article>
+                    `;
+                }).join("") || '<p class="empty-state">No registered users found.</p>'}
+            </div>
         </div>
     `;
+
+    document.getElementById("userFilter")?.addEventListener("input", event => {
+        userFilter = event.target.value;
+        const search = userFilter.toLowerCase().trim();
+        container.querySelectorAll("[data-user-search]").forEach(item => {
+            item.hidden = !item.dataset.userSearch.includes(search);
+        });
+    });
 }
 
 // TAB 4: ALBUMS
@@ -669,7 +800,7 @@ function renderAlbums(container) {
             <div class="t-header">
                 <h3><i class="fa-solid fa-folder-tree" style="color:var(--accent);"></i> All Cloud Albums (${albumsData.length})</h3>
             </div>
-            <div style="overflow-x:auto;">
+            <div class="desktop-table-wrap">
                 <table class="admin-table">
                     <thead>
                         <tr>
@@ -683,15 +814,27 @@ function renderAlbums(container) {
                         ${albumsData.map(a => `
                             <tr>
                                 <td style="font-weight:700;"><i class="fa-solid fa-folder" style="color:var(--accent); margin-right:8px;"></i> ${escapeHtml(a.name)}</td>
-                                <td style="font-family:monospace; font-size:0.75rem;">${escapeHtml(a.id)}</td>
-                                <td style="font-family:monospace; font-size:0.75rem;">${escapeHtml(a.uid)}</td>
+                                <td>${copyControl(a.id, "album ID")}</td>
+                                <td>${copyControl(a.uid || "Unknown", "owner UID")}</td>
                                 <td>
-                                    <button class="action-btn del" onclick="window.adminDeleteAlbum(${inlineArg(a.id)})"><i class="fa-solid fa-trash"></i></button>
+                                    <button class="action-btn del" type="button" onclick="window.adminDeleteAlbum(${inlineArg(a.id)})"><i class="fa-solid fa-trash"></i></button>
                                 </td>
                             </tr>
                         `).join('')}
                     </tbody>
                 </table>
+            </div>
+            <div class="mobile-card-list">
+                ${albumsData.map(a => `
+                    <article class="data-card album-card">
+                        <div class="data-card-heading"><span class="album-name"><i class="fa-solid fa-folder"></i> ${escapeHtml(a.name || "Untitled album")}</span><span class="tag active">Album</span></div>
+                        <div class="data-field"><span>Album ID</span>${copyControl(a.id, "album ID")}</div>
+                        <div class="data-field"><span>Owner UID</span>${copyControl(a.uid || "Unknown", "owner UID")}</div>
+                        <div class="data-card-actions">
+                            <button class="action-btn del" type="button" onclick="window.adminDeleteAlbum(${inlineArg(a.id)})" aria-label="Delete album"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </article>
+                `).join("") || '<p class="empty-state">No albums found.</p>'}
             </div>
         </div>
     `;
@@ -764,15 +907,102 @@ function renderSettings(container) {
 // --------------------------------------------------------------------------
 // 4. GLOBAL ACTION HANDLERS
 // --------------------------------------------------------------------------
-window.adminTogglePro = async (uid, shouldBePro) => {
+window.adminCopy = async (value, label = "value") => {
     try {
-        await setDoc(doc(db, "users", uid), { isPro: shouldBePro }, { merge: true });
-        clearFirestoreError("action");
-        toast(`User updated: ${shouldBePro ? "PRO Active" : "Free Tier"}`);
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(String(value));
+        } else {
+            const input = document.createElement("textarea");
+            input.value = String(value);
+            input.setAttribute("readonly", "");
+            input.style.position = "fixed";
+            input.style.opacity = "0";
+            document.body.appendChild(input);
+            input.select();
+            const copied = document.execCommand("copy");
+            input.remove();
+            if (!copied) throw new Error("Clipboard access is unavailable");
+        }
+        toast(`${label} copied`);
     } catch (error) {
-        toast(`Error updating user: ${error.message}`);
-        reportFirestoreError(error, "action");
+        toast(`Unable to copy ${label}: ${error.message}`);
     }
+};
+
+window.adminPreviewPhoto = documentPath => {
+    const photo = getAllPhotos().find(item => getPhotoPath(item) === documentPath);
+    if (!photo) {
+        toast("Photo is no longer available in the current stream");
+        return;
+    }
+    const lightbox = document.getElementById("photoLightbox");
+    if (!lightbox) return;
+    lightboxPhotoPath = documentPath;
+    lightboxZoom = 1;
+    document.getElementById("lightboxImage").src = getPhotoImage(photo);
+    document.getElementById("lightboxImage").style.transform = `scale(${lightboxZoom})`;
+    document.getElementById("lightboxTitle").textContent = photo.id;
+    document.getElementById("lightboxUid").textContent = photo.uid || "Anonymous";
+    document.getElementById("lightboxSize").textContent = formatSize(photo.fileSize || 0);
+    document.getElementById("lightboxDate").textContent = formatDate(photo.createdAt || photo.timestamp || photo.date || photo.uploadedAt);
+    lightbox.hidden = false;
+    document.getElementById("lightboxClose")?.focus();
+};
+
+window.adminTogglePro = async (uid, shouldBePro) => {
+    confirmAction(
+        shouldBePro ? "Grant Anant PRO?" : "Revoke Anant PRO?",
+        `Change ${uid} to ${shouldBePro ? "Anant PRO" : "Free Tier"}? This updates the user's membership immediately.`,
+        async () => {
+            try {
+                await setDoc(doc(db, "users", uid), { isPro: shouldBePro }, { merge: true });
+                clearFirestoreError("action");
+                toast(`User updated: ${shouldBePro ? "PRO Active" : "Free Tier"}`);
+            } catch (error) {
+                toast(`Error updating user: ${error.message}`);
+                reportFirestoreError(error, "action");
+            }
+        },
+        shouldBePro ? "Grant PRO" : "Revoke PRO"
+    );
+};
+
+window.adminPurgeTrash = () => {
+    if (isPurgingTrash) return;
+    const trashCount = photosData.filter(photo => photo.isDeleted === true).length;
+    if (!trashCount) {
+        toast("Cloud trash is already empty");
+        return;
+    }
+    confirmAction(
+        "Empty Cloud Trash?",
+        `Permanently delete all ${trashCount} photos marked as trash in user_photos. This cannot be undone.`,
+        async () => {
+            isPurgingTrash = true;
+            renderCurrentTab();
+            try {
+                const trashSnapshot = await getDocs(query(collection(db, "user_photos"), where("isDeleted", "==", true)));
+                let deletedCount = 0;
+                const documents = trashSnapshot.docs;
+                for (let start = 0; start < documents.length; start += 450) {
+                    const batch = writeBatch(db);
+                    const chunk = documents.slice(start, start + 450);
+                    chunk.forEach(snapshot => batch.delete(snapshot.ref));
+                    await batch.commit();
+                    deletedCount += chunk.length;
+                }
+                clearFirestoreError("action");
+                toast(deletedCount ? `Permanently deleted ${deletedCount} trash photos` : "Cloud trash is already empty");
+            } catch (error) {
+                toast(`Trash purge failed: ${error.message}`);
+                reportFirestoreError(error, "action");
+            } finally {
+                isPurgingTrash = false;
+                renderCurrentTab();
+            }
+        },
+        "Empty Trash"
+    );
 };
 
 window.adminToggleConfig = async (key, val) => {
@@ -844,13 +1074,27 @@ window.adminDeleteAlbum = (albumId) => {
 // 5. NAVIGATION SETUP
 // --------------------------------------------------------------------------
 function setupNav() {
-    document.querySelectorAll(".menu-item").forEach(item => {
+    const pageTitles = {
+        dashboard: "Live Dashboard & Analytics",
+        photos: "All Cloud Photos",
+        users: "User Management",
+        albums: "Albums & Folders",
+        settings: "System Settings"
+    };
+    const navigateTo = tab => {
+        if (!pageTitles[tab]) return;
+        document.querySelectorAll(".menu-item, .dock-item").forEach(item => {
+            item.classList.toggle("active", item.dataset.tab === tab);
+        });
+        currentTab = tab;
+        document.getElementById("pageHeading").textContent = pageTitles[tab];
+        renderCurrentTab();
+        document.getElementById("sidebar")?.classList.remove("open");
+    };
+
+    document.querySelectorAll(".menu-item, .dock-item").forEach(item => {
         item.addEventListener("click", () => {
-            document.querySelectorAll(".menu-item").forEach(n => n.classList.remove("active"));
-            item.classList.add("active");
-            currentTab = item.dataset.tab;
-            renderCurrentTab();
-            document.getElementById("sidebar")?.classList.remove("open");
+            navigateTo(item.dataset.tab);
         });
     });
 
@@ -873,7 +1117,39 @@ function setupNav() {
     });
 }
 
+function setupLightbox() {
+    const lightbox = document.getElementById("photoLightbox");
+    const image = document.getElementById("lightboxImage");
+    const close = () => {
+        lightbox.hidden = true;
+        lightboxPhotoPath = null;
+        image.src = "";
+        lightboxZoom = 1;
+    };
+    document.getElementById("lightboxClose")?.addEventListener("click", close);
+    lightbox?.addEventListener("click", event => {
+        if (event.target === lightbox) close();
+    });
+    document.getElementById("lightboxZoomIn")?.addEventListener("click", () => {
+        lightboxZoom = Math.min(4, lightboxZoom + 0.25);
+        image.style.transform = `scale(${lightboxZoom})`;
+    });
+    document.getElementById("lightboxZoomOut")?.addEventListener("click", () => {
+        lightboxZoom = Math.max(1, lightboxZoom - 0.25);
+        image.style.transform = `scale(${lightboxZoom})`;
+    });
+    document.getElementById("lightboxDelete")?.addEventListener("click", () => {
+        const path = lightboxPhotoPath;
+        close();
+        if (path) window.adminDeletePhoto(path);
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !lightbox.hidden) close();
+    });
+}
+
 watchAdminAuthState();
 processGoogleRedirectResult();
 initAuth();
 setupNav();
+setupLightbox();

@@ -7,7 +7,7 @@
     
     <!-- PWA Settings -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#090d16">
+    <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -68,14 +68,41 @@
     <div id="adminToast">System Ready</div>
 
     <!-- Confirmation modal -->
-    <div id="adminModal" class="modal-overlay" style="display:none;">
+    <div id="adminModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle" style="display:none;">
         <div class="modal-box">
             <div class="modal-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
-            <h3 id="modalTitle">Kya aap sure hain?</h3>
-            <p id="modalDesc">Yeh action permanent hoga aur wapas nahi laya ja sakega.</p>
+            <h3 id="modalTitle">Confirm action</h3>
+            <p id="modalDesc">This action cannot be undone.</p>
             <div class="modal-btns">
                 <button class="m-btn cancel" id="btnModalCancel">Cancel</button>
-                <button class="m-btn danger" id="btnModalConfirm">Confirm Delete</button>
+                <button class="m-btn danger" id="btnModalConfirm">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="photoLightbox" class="lightbox-overlay" role="dialog" aria-modal="true" aria-label="Photo preview" hidden>
+        <div class="lightbox-panel">
+            <div class="lightbox-toolbar">
+                <div>
+                    <h2>Photo preview</h2>
+                    <span id="lightboxTitle" class="lightbox-title"></span>
+                </div>
+                <div class="lightbox-actions">
+                    <button class="icon-btn" id="lightboxZoomOut" type="button" aria-label="Zoom out" title="Zoom out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+                    <button class="icon-btn" id="lightboxZoomIn" type="button" aria-label="Zoom in" title="Zoom in"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+                    <button class="icon-btn" id="lightboxClose" type="button" aria-label="Close preview" title="Close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="lightbox-image-wrap">
+                <img id="lightboxImage" alt="Selected cloud photo">
+            </div>
+            <div class="lightbox-footer">
+                <dl class="lightbox-metadata">
+                    <div><dt>User UID</dt><dd id="lightboxUid"></dd></div>
+                    <div><dt>File size</dt><dd id="lightboxSize"></dd></div>
+                    <div><dt>Date</dt><dd id="lightboxDate"></dd></div>
+                </dl>
+                <button class="danger-action" id="lightboxDelete" type="button"><i class="fa-solid fa-trash"></i> Delete photo</button>
             </div>
         </div>
     </div>
@@ -148,6 +175,28 @@
             <div id="contentContainer"></div>
         </main>
 
+        <nav id="mobileDock" class="mobile-dock" aria-label="Primary navigation">
+            <button class="dock-item active" type="button" data-tab="dashboard" aria-label="Dashboard">
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/gauge-high.svg" alt="">
+                <span>Dashboard</span>
+            </button>
+            <button class="dock-item" type="button" data-tab="photos" aria-label="Photos">
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/images.svg" alt="">
+                <span>Photos</span>
+            </button>
+            <button class="dock-item" type="button" data-tab="users" aria-label="Users">
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/users.svg" alt="">
+                <span>Users</span>
+            </button>
+            <button class="dock-item" type="button" data-tab="albums" aria-label="Albums">
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/folder-tree.svg" alt="">
+                <span>Albums</span>
+            </button>
+            <button class="dock-item" type="button" data-tab="settings" aria-label="Settings">
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/sliders.svg" alt="">
+                <span>Settings</span>
+            </button>
+        </nav>
     </div>
 
     <script type="module" src="admin.js"></script>
