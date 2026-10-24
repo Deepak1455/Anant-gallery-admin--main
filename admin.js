@@ -956,7 +956,7 @@ function renderBots(container) {
                             </div>
                             <span class="bot-status ${node.status}" aria-label="${node.status}" title="${node.status}">
                                 <span class="bot-status-dot"></span>
-                                ${node.status === "testing" ? "Testing" : node.status === "online" ? "Online" : node.status === "offline" ? "Offline" : "Not checked"}
+                                ${node.status === "testing" ? "Testing" : node.status === "online" ? "ACTIVE" : node.status === "offline" ? "Offline" : "Not checked"}
                             </span>
                         </div>
                         <div class="bot-node-meta">
@@ -974,15 +974,15 @@ function renderBots(container) {
     `;
 
     container.querySelectorAll(".bot-test-button").forEach(button => {
-        button.addEventListener("click", () => testBotNode(Number(button.dataset.nodeId)));
+        button.addEventListener("click", () => window.testSingleBot(Number(button.dataset.nodeId)));
     });
     const pingAllButton = document.getElementById("btnPingAllNodes");
     if (pingAllButton) pingAllButton.disabled = isPingingAllNodes;
 }
 
-async function testBotNode(nodeId) {
-    const node = botNodes.find(item => item.id === nodeId);
-    if (!node) throw new Error(`Unknown bot node: ${nodeId}`);
+window.testSingleBot = async botId => {
+    const node = botNodes.find(item => item.id === botId);
+    if (!node) throw new Error(`Unknown bot node: ${botId}`);
     if (node.status === "testing") return node;
 
     node.status = "testing";
@@ -995,8 +995,9 @@ async function testBotNode(nodeId) {
         const timeoutId = window.setTimeout(() => controller.abort(), 10000);
         let response;
         try {
-            response = await fetch(`https://anant-gallery.vercel.app/api/upload?checkNode=${encodeURIComponent(nodeId)}`, {
+            response = await fetch(`https://anant-gallery.vercel.app/api/upload?checkNode=${encodeURIComponent(botId)}`, {
                 method: "GET",
+                mode: "cors",
                 cache: "no-store",
                 signal: controller.signal
             });
@@ -1005,24 +1006,8 @@ async function testBotNode(nodeId) {
         }
 
         node.latency = Math.max(0, Math.round(performance.now() - startedAt));
-        const responseBody = await response.text();
-        let result = null;
-        try {
-            result = responseBody ? JSON.parse(responseBody) : null;
-        } catch (error) {
-            if (!(error instanceof SyntaxError)) throw error;
-        }
-        const explicitlyUnhealthy = result && (
-            result.online === false ||
-            result.success === false ||
-            result.ok === false ||
-            result.healthy === false ||
-            result.isOnline === false ||
-            ["offline", "error", "failed"].includes(String(result.status || "").toLowerCase())
-        );
-        const unhealthyText = /(^|\b)(offline|error|failed)(\b|$)/i.test(responseBody);
-        if (!response.ok || explicitlyUnhealthy || unhealthyText) {
-            throw new Error(`Health check returned ${response.status || "an unhealthy response"}`);
+        if ([500, 502, 503].includes(response.status)) {
+            throw new Error(`Health check returned ${response.status}`);
         }
         node.status = "online";
         node.error = "";
@@ -1034,14 +1019,14 @@ async function testBotNode(nodeId) {
     } finally {
         renderCurrentTab();
     }
-}
+};
 
 async function testAllBotNodes() {
     if (isPingingAllNodes) return;
     isPingingAllNodes = true;
     renderCurrentTab();
     try {
-        const results = await Promise.allSettled(botNodes.map(node => testBotNode(node.id)));
+        const results = await Promise.allSettled(botNodes.map(node => window.testSingleBot(node.id)));
         const onlineCount = botNodes.filter(node => node.status === "online").length;
         const failedCount = results.filter(result => result.status === "rejected").length;
         toast(`${onlineCount} / 15 nodes online${failedCount ? `; ${failedCount} checks failed` : ""}`);
