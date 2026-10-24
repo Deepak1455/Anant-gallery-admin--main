@@ -495,7 +495,8 @@ function startRealtimeStream() {
         } else {
             appConfigData = { ads_enabled: true, maintenance_mode: false };
         }
-        if (currentTab === "settings" || currentTab === "dashboard") {
+        if (currentTab === "settings" || currentTab === "dashboard" ||
+            (currentTab === "app_updates" && !appUpdateFormDirty)) {
             renderCurrentTab();
         }
     }, error => reportFirestoreError(error, "config"));
@@ -1040,6 +1041,8 @@ async function testAllBotNodes() {
 function renderAppUpdates(container) {
     const updateError = firestoreErrors["app-update"];
     const data = appUpdateData;
+    const announcementEnabled = data.announcementEnabled ?? Boolean(data.announcementBanner);
+    const maintenanceMode = data.maintenanceMode ?? (appConfigData.maintenance_mode === true);
     container.innerHTML = `
         <section class="app-update-card">
             <div class="app-update-heading">
@@ -1047,14 +1050,14 @@ function renderAppUpdates(container) {
                 <div>
                     <p class="module-eyebrow">Remote configuration</p>
                     <h3>Featured Update & Announcement</h3>
-                    <p class="module-description">Publish update requirements and an in-app message to all users.</p>
+                    <p class="module-description">Manage app updates, announcements, and maintenance mode.</p>
                 </div>
             </div>
             ${updateError ? `<div class="firestore-error" role="alert"><strong>${escapeHtml(updateError.title)}</strong><p>${escapeHtml(updateError.details)}</p></div>` : ""}
             ${!appUpdateLoaded ? '<p class="update-sync-note" role="status"><i class="fa-solid fa-spinner fa-spin"></i> Connecting to live update settings...</p>' : ""}
             <form id="appUpdateForm" class="app-update-form">
                 <label class="update-field">
-                    <span>Latest Version Code</span>
+                    <span>Version Code</span>
                     <input id="updateLatestVersionCode" name="latestVersionCode" type="number" min="1" step="1" required value="${escapeHtml(data.latestVersionCode ?? "")}" placeholder="5">
                 </label>
                 <label class="update-field">
@@ -1065,29 +1068,43 @@ function renderAppUpdates(container) {
                     <span>Minimum Supported Version</span>
                     <input id="updateMinimumSupportedVersion" name="minimumSupportedVersion" type="number" min="0" step="1" required value="${escapeHtml(data.minimumSupportedVersion ?? "")}" placeholder="4">
                 </label>
-                <label class="update-field update-toggle-field" for="updateForceUpdate">
+                <label class="update-field update-toggle-field">
                     <span>
                         <strong>Force Update</strong>
                         <small>Block older versions until users update.</small>
                     </span>
-                    <input id="updateForceUpdate" name="forceUpdate" type="checkbox" ${data.forceUpdate === true ? "checked" : ""}>
+                    <input id="updateForceUpdate" name="forceUpdate" type="checkbox" role="switch" aria-label="Force Update" ${data.forceUpdate === true ? "checked" : ""}>
+                </label>
+                <label class="update-field update-toggle-field">
+                    <span>
+                        <strong>Announcement</strong>
+                        <small>Show the announcement text in the app.</small>
+                    </span>
+                    <input id="updateAnnouncementEnabled" name="announcementEnabled" type="checkbox" role="switch" aria-label="Announcement" ${announcementEnabled ? "checked" : ""}>
+                </label>
+                <label class="update-field update-toggle-field">
+                    <span>
+                        <strong>Maintenance Mode</strong>
+                        <small>Temporarily restrict app access for maintenance.</small>
+                    </span>
+                    <input id="updateMaintenanceMode" name="maintenanceMode" type="checkbox" role="switch" aria-label="Maintenance Mode" ${maintenanceMode ? "checked" : ""}>
                 </label>
                 <label class="update-field update-field-wide">
-                    <span>Update Dialog Title</span>
+                    <span>Title</span>
                     <input id="updateDialogTitle" name="dialogTitle" type="text" required maxlength="120" value="${escapeHtml(data.dialogTitle ?? "")}" placeholder="Google Sign-In &amp; Performance Fix">
                 </label>
                 <label class="update-field update-field-wide">
-                    <span>What's New / Release Notes</span>
+                    <span>Notes</span>
                     <textarea id="updateReleaseNotes" name="releaseNotes" rows="5" maxlength="4000" placeholder="Add release notes shown in the update dialog.">${escapeHtml(data.releaseNotes ?? "")}</textarea>
                 </label>
                 <label class="update-field update-field-wide">
-                    <span>In-App Announcement Banner</span>
+                    <span>Announcement Text</span>
                     <input id="updateAnnouncementBanner" name="announcementBanner" type="text" maxlength="240" value="${escapeHtml(data.announcementBanner ?? "")}" placeholder="Get Anant PRO 50% Off this week!">
                 </label>
                 <div class="update-form-footer update-field-wide">
-                    <p class="update-sync-note"><i class="fa-solid fa-tower-broadcast"></i> Live document: <code>app_config/app_update</code></p>
+                    <p class="update-sync-note"><i class="fa-solid fa-tower-broadcast"></i> Live documents: <code>app_config/app_update</code> and <code>app_config/global</code></p>
                     <button class="primary-action publish-update-button" type="submit" ${isPublishingAppUpdate ? "disabled" : ""}>
-                        <i class="fa-solid fa-cloud-arrow-up"></i> ${isPublishingAppUpdate ? "Publishing..." : "Publish Update to All Users"}
+                        <i class="fa-solid fa-cloud-arrow-up"></i> ${isPublishingAppUpdate ? "Publishing..." : "Save & Publish"}
                     </button>
                 </div>
             </form>
@@ -1121,9 +1138,11 @@ async function publishAppUpdate(event) {
         versionName: String(formData.get("versionName") || "").trim(),
         minimumSupportedVersion,
         forceUpdate: formData.get("forceUpdate") === "on",
+        announcementEnabled: formData.get("announcementEnabled") === "on",
         dialogTitle: String(formData.get("dialogTitle") || "").trim(),
         releaseNotes: String(formData.get("releaseNotes") || "").trim(),
         announcementBanner: String(formData.get("announcementBanner") || "").trim(),
+        maintenanceMode: formData.get("maintenanceMode") === "on",
         updatedAt: serverTimestamp()
     };
 
@@ -1135,7 +1154,12 @@ async function publishAppUpdate(event) {
     }
     let published = false;
     try {
-        await setDoc(doc(db, "app_config", "app_update"), update, { merge: true });
+        const batch = writeBatch(db);
+        batch.set(doc(db, "app_config", "app_update"), update, { merge: true });
+        batch.set(doc(db, "app_config", "global"), {
+            maintenance_mode: update.maintenanceMode
+        }, { merge: true });
+        await batch.commit();
         appUpdateData = { ...update };
         delete appUpdateData.updatedAt;
         appUpdateFormDirty = false;
@@ -1151,7 +1175,7 @@ async function publishAppUpdate(event) {
             renderCurrentTab();
         } else if (submitButton?.isConnected) {
             submitButton.disabled = false;
-            submitButton.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Publish Update to All Users';
+            submitButton.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Save &amp; Publish';
         }
     }
 }

@@ -709,7 +709,32 @@ html, body {
 }
 .update-toggle-field strong, .update-toggle-field small { display: block; }
 .update-toggle-field small { margin-top: 4px; color: var(--text-muted); font-size: 0.7rem; font-weight: 400; }
-.update-toggle-field input { width: 20px; height: 20px; accent-color: #10b981; cursor: pointer; }
+.update-toggle-field input {
+    position: relative;
+    width: 44px;
+    height: 25px;
+    flex: 0 0 44px;
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    background: #374151;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+}
+.update-toggle-field input::before {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: #fff;
+    content: "";
+    transition: transform 120ms ease;
+}
+.update-toggle-field input:checked { border-color: #10b981; background: #10b981; }
+.update-toggle-field input:checked::before { transform: translateX(19px); }
+.update-toggle-field input:focus-visible { outline: 2px solid #a7f3d0; outline-offset: 3px; }
 .update-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .update-sync-note { color: var(--text-muted); font-size: 0.74rem; }
 .update-sync-note code { color: #a7f3d0; }
