@@ -1,0 +1,19 @@
+{
+  "id": "/admin",
+  "name": "Anant Admin Console",
+  "short_name": "Anant Admin",
+  "description": "Master Cloud Controller for Anant Gallery",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080c14",
+  "theme_color": "#080c14",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/906/906343.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
