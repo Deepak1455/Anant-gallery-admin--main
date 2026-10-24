@@ -925,9 +925,9 @@ html, body {
         transition: color 120ms ease, transform 120ms ease, background 120ms ease;
         will-change: transform;
     }
-    .dock-item img { width: 18px; height: 18px; opacity: 0.7; filter: invert(1); transition: opacity 120ms ease, transform 120ms ease; }
-    .dock-item.active { color: #fff; background: rgba(99, 102, 241, 0.2); }
-    .dock-item.active img { opacity: 1; transform: translateY(-1px); }
+    .dock-item i { display: block; width: 20px; font-size: 18px; line-height: 1; text-align: center; transition: transform 120ms ease, color 120ms ease; }
+    .dock-item.active { color: #10b981; background: rgba(16, 185, 129, 0.14); }
+    .dock-item.active i { color: #34d399; transform: translateY(-1px); }
     .dock-item:active { transform: scale(0.94); }
     .top-right #btnPingAllNodes { min-height: 34px; padding: 7px 9px; font-size: 0.66rem; white-space: nowrap; }
     .top-right #btnPingAllNodes i { display: none; }

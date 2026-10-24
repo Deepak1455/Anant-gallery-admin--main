@@ -741,13 +741,14 @@ function renderUsers(container) {
                         ${userList.map(u => {
                             const profile = usersProfileData[u.uid] || {};
                             const isPro = profile.isPro === true;
-                            const email = profile.email || "Email unavailable";
-                            const searchValue = `${email} ${u.uid}`.toLowerCase();
+                            const email = typeof profile.email === "string" ? profile.email.trim() : "";
+                            const hasEmail = email && email.toLowerCase() !== "email unavailable";
+                            const searchValue = `${hasEmail ? email : "Guest Anonymous"} ${u.uid}`.toLowerCase();
                             return `
                                 <tr data-user-search="${escapeHtml(searchValue)}">
                                     <td>
                                         <div class="user-identity">
-                                            <strong>${copyControl(email, "email")}</strong>
+                                            <strong>${hasEmail ? copyControl(email, "email") : '<span class="tag hidden" style="background:#374151; color:#9ca3af;"><i class="fa-solid fa-user-secret"></i> Guest / Anonymous</span>'}</strong>
                                             ${copyControl(u.uid, "user UID")}
                                         </div>
                                     </td>
@@ -775,8 +776,9 @@ function renderUsers(container) {
                 ${userList.map(u => {
                     const profile = usersProfileData[u.uid] || {};
                     const isPro = profile.isPro === true;
-                    const email = profile.email || "Email unavailable";
-                    const searchValue = `${email} ${u.uid}`.toLowerCase();
+                    const email = typeof profile.email === "string" ? profile.email.trim() : "";
+                    const hasEmail = email && email.toLowerCase() !== "email unavailable";
+                    const searchValue = `${hasEmail ? email : "Guest Anonymous"} ${u.uid}`.toLowerCase();
                     return `
                         <article class="data-card user-card" data-user-search="${escapeHtml(searchValue)}">
                             <div class="data-card-heading">
@@ -787,7 +789,7 @@ function renderUsers(container) {
                                     ${isPro ? 'Anant PRO' : 'Free Tier'}
                                 </button>
                             </div>
-                            <div class="data-field"><span>Email</span>${copyControl(email, "email")}</div>
+                            <div class="data-field"><span>Email</span>${hasEmail ? copyControl(email, "email") : '<span class="tag hidden" style="background:#374151; color:#9ca3af;"><i class="fa-solid fa-user-secret"></i> Guest / Anonymous</span>'}</div>
                             <div class="data-field"><span>User UID</span>${copyControl(u.uid, "user UID")}</div>
                             <div class="user-stats">
                                 <span><strong>${u.count}</strong> Photos</span>
