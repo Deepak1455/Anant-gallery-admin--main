@@ -6,6 +6,8 @@ import { auth, db } from "./firebase-config.js";
 import {
     signInAnonymously,
     signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     GoogleAuthProvider,
     onAuthStateChanged,
     signOut
@@ -44,9 +46,33 @@ let firestoreError = null;
 const firestoreErrors = {};
 let unsubscribePhotoFallback = null;
 let realtimeStreamStarted = false;
+let unauthorizedSignOutInProgress = false;
 
 function isAuthorizedAdmin(user) {
-    return Boolean(user?.email && AUTHORIZED_ADMINS.includes(user.email.toLowerCase()));
+    return Boolean(user?.email && AUTHORIZED_ADMINS.includes(user.email.trim().toLowerCase()));
+}
+
+function getGoogleAuthErrorMessage(error) {
+    if (error?.code === "auth/unauthorized-domain") {
+        return "Unauthorized domain. Add anant-gallery-admin-main.vercel.app under Firebase Console > Authentication > Settings > Authorized domains.";
+    }
+    if (/redirect_uri_mismatch/i.test(error?.message || "")) {
+        return "Google OAuth redirect URI mismatch. In Google Cloud Console, add https://my-photo-d96e9.firebaseapp.com/__/auth/handler as an authorized redirect URI for the OAuth web client used by Firebase Authentication.";
+    }
+    return `Google sign-in failed: ${error?.message || "Unknown authentication error"}`;
+}
+
+async function rejectUnauthorizedUser() {
+    if (unauthorizedSignOutInProgress) return;
+    unauthorizedSignOutInProgress = true;
+    try {
+        await signOut(auth);
+    } catch (error) {
+        toast(`Unable to sign out unauthorized account: ${error.message}`);
+    } finally {
+        toast("Access Denied: Unauthorized Email");
+        unauthorizedSignOutInProgress = false;
+    }
 }
 
 function showAdminWorkspace(message = "Admin Access Granted") {
@@ -66,12 +92,7 @@ function watchAdminAuthState() {
             return;
         }
 
-        toast("Access Denied: Not an authorized admin");
-        try {
-            await signOut(auth);
-        } catch (error) {
-            toast(`Unable to sign out unauthorized account: ${error.message}`);
-        }
+        await rejectUnauthorizedUser();
     }, error => {
         toast(`Authentication state error: ${error.message}`);
     });
@@ -200,7 +221,7 @@ async function initAuth() {
     const pinInput = document.getElementById("adminMasterPin");
     const unlockBtn = document.getElementById("btnAdminUnlock");
     const bioBtn = document.getElementById("btnAdminBio");
-    const googleBtn = document.getElementById("btnAdminGoogle");
+    const googleBtn = document.getElementById("btnAdminGoogleLogin");
 
     const unlockWithPinOrPasskey = async () => {
         try {
@@ -222,21 +243,24 @@ async function initAuth() {
             try {
                 const result = await signInWithPopup(auth, provider);
                 if (!isAuthorizedAdmin(result.user)) {
-                    try {
-                        await signOut(auth);
-                    } catch (signOutError) {
-                        console.error("Unable to sign out unauthorized account", signOutError);
-                    }
-                    toast("Access Denied: Not an authorized admin");
+                    await rejectUnauthorizedUser();
                     return;
                 }
                 showAdminWorkspace("Admin Access Granted");
             } catch (error) {
+                if (error.code === "auth/popup-blocked") {
+                    try {
+                        await signInWithRedirect(auth, provider);
+                    } catch (redirectError) {
+                        toast(getGoogleAuthErrorMessage(redirectError));
+                    }
+                    return;
+                }
                 if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
                     toast("Google sign-in was cancelled");
                     return;
                 }
-                toast(`Google sign-in failed: ${error.message}`);
+                toast(getGoogleAuthErrorMessage(error));
             }
         };
     };
@@ -330,6 +354,20 @@ async function initAuth() {
     } else if (bioBtn) {
         bioBtn.disabled = true;
         bioBtn.title = "Passkeys are not supported in this browser";
+    }
+}
+
+async function processGoogleRedirectResult() {
+    try {
+        const result = await getRedirectResult(auth);
+        if (!result?.user) return;
+        if (isAuthorizedAdmin(result.user)) {
+            showAdminWorkspace("Admin Access Granted");
+        } else {
+            await rejectUnauthorizedUser();
+        }
+    } catch (error) {
+        toast(getGoogleAuthErrorMessage(error));
     }
 }
 
@@ -836,5 +874,6 @@ function setupNav() {
 }
 
 watchAdminAuthState();
+processGoogleRedirectResult();
 initAuth();
 setupNav();
