@@ -22,7 +22,8 @@ import {
     getDocs,
     setDoc,
     query,
-    where
+    where,
+    serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Master Pin Cryptographic Salt
@@ -43,6 +44,17 @@ let fallbackPhotosData = [];
 let albumsData = [];
 let usersProfileData = {};
 let appConfigData = { ads_enabled: true, maintenance_mode: false };
+let appUpdateData = {};
+let appUpdateLoaded = false;
+let appUpdateFormDirty = false;
+let isPublishingAppUpdate = false;
+const botNodes = Array.from({ length: 15 }, (_, index) => ({
+    id: index + 1,
+    status: "unknown",
+    latency: null,
+    error: ""
+}));
+let isPingingAllNodes = false;
 let firestoreError = null;
 const firestoreErrors = {};
 let unsubscribePhotoFallback = null;
@@ -158,6 +170,7 @@ function reportFirestoreError(error, source = "firestore") {
         };
     }
     firestoreError = Object.values(firestoreErrors)[0] || null;
+    if (currentTab === "app_updates" && appUpdateFormDirty) return;
     renderCurrentTab();
 }
 
@@ -486,6 +499,13 @@ function startRealtimeStream() {
             renderCurrentTab();
         }
     }, error => reportFirestoreError(error, "config"));
+
+    onSnapshot(doc(db, "app_config", "app_update"), snap => {
+        clearFirestoreError("app-update");
+        appUpdateData = snap.exists() ? snap.data() : {};
+        appUpdateLoaded = true;
+        if (currentTab === "app_updates" && !appUpdateFormDirty) renderCurrentTab();
+    }, error => reportFirestoreError(error, "app-update"));
 }
 
 // --------------------------------------------------------------------------
@@ -505,6 +525,11 @@ function renderCurrentTab() {
     else if (currentTab === "users") renderUsers(container);
     else if (currentTab === "albums") renderAlbums(container);
     else if (currentTab === "settings") renderSettings(container);
+    else if (currentTab === "bots") renderBots(container);
+    else if (currentTab === "app_updates") renderAppUpdates(container);
+
+    const pingAllButton = document.getElementById("btnPingAllNodes");
+    if (pingAllButton) pingAllButton.hidden = currentTab !== "bots";
 
     if (focusedInput?.id) {
         const replacement = document.getElementById(focusedInput.id);
@@ -904,6 +929,246 @@ function renderSettings(container) {
     });
 }
 
+// TAB 6: TELEGRAM BOT NODE HEALTH
+function renderBots(container) {
+    const onlineCount = botNodes.filter(node => node.status === "online").length;
+    container.innerHTML = `
+        <section class="bot-monitor">
+            <div class="bot-monitor-heading">
+                <div>
+                    <p class="module-eyebrow">Infrastructure health</p>
+                    <h3>Telegram Bot CDN</h3>
+                    <p class="module-description">Run a live connectivity check against each configured bot node.</p>
+                </div>
+                <div class="bot-online-count" role="status" aria-live="polite">
+                    <span>${onlineCount} / 15</span> Online
+                </div>
+            </div>
+            <div class="bot-node-grid">
+                ${botNodes.map(node => `
+                    <article class="bot-node-card">
+                        <div class="bot-node-heading">
+                            <div>
+                                <h4>CDN-Node-${node.id}</h4>
+                                <span class="bot-token-mask" aria-label="Bot token masked and configured server-side">Token <span>••••••••••••</span> (server-side)</span>
+                            </div>
+                            <span class="bot-status ${node.status}" aria-label="${node.status}" title="${node.status}">
+                                <span class="bot-status-dot"></span>
+                                ${node.status === "testing" ? "Testing" : node.status === "online" ? "Online" : node.status === "offline" ? "Offline" : "Not checked"}
+                            </span>
+                        </div>
+                        <div class="bot-node-meta">
+                            <span><i class="fa-solid fa-gauge-high"></i> Latency</span>
+                            <strong>${node.latency === null ? "--" : `${node.latency}ms`}</strong>
+                        </div>
+                        ${node.error ? `<p class="bot-node-error" role="status">${escapeHtml(node.error)}</p>` : ""}
+                        <button class="secondary-action bot-test-button" type="button" data-node-id="${node.id}" ${node.status === "testing" ? "disabled" : ""}>
+                            <i class="fa-solid fa-vial"></i> ${node.status === "testing" ? "Testing..." : "Test node"}
+                        </button>
+                    </article>
+                `).join("")}
+            </div>
+        </section>
+    `;
+
+    container.querySelectorAll(".bot-test-button").forEach(button => {
+        button.addEventListener("click", () => testBotNode(Number(button.dataset.nodeId)));
+    });
+    const pingAllButton = document.getElementById("btnPingAllNodes");
+    if (pingAllButton) pingAllButton.disabled = isPingingAllNodes;
+}
+
+async function testBotNode(nodeId) {
+    const node = botNodes.find(item => item.id === nodeId);
+    if (!node) throw new Error(`Unknown bot node: ${nodeId}`);
+    if (node.status === "testing") return node;
+
+    node.status = "testing";
+    node.error = "";
+    renderCurrentTab();
+    const startedAt = performance.now();
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+        let response;
+        try {
+            response = await fetch(`https://anant-gallery.vercel.app/api/upload?checkNode=${encodeURIComponent(nodeId)}`, {
+                method: "GET",
+                cache: "no-store",
+                signal: controller.signal
+            });
+        } finally {
+            window.clearTimeout(timeoutId);
+        }
+
+        node.latency = Math.max(0, Math.round(performance.now() - startedAt));
+        const responseBody = await response.text();
+        let result = null;
+        try {
+            result = responseBody ? JSON.parse(responseBody) : null;
+        } catch (error) {
+            if (!(error instanceof SyntaxError)) throw error;
+        }
+        const explicitlyUnhealthy = result && (
+            result.online === false ||
+            result.success === false ||
+            result.ok === false ||
+            result.healthy === false ||
+            result.isOnline === false ||
+            ["offline", "error", "failed"].includes(String(result.status || "").toLowerCase())
+        );
+        const unhealthyText = /(^|\b)(offline|error|failed)(\b|$)/i.test(responseBody);
+        if (!response.ok || explicitlyUnhealthy || unhealthyText) {
+            throw new Error(`Health check returned ${response.status || "an unhealthy response"}`);
+        }
+        node.status = "online";
+        node.error = "";
+        return node;
+    } catch (error) {
+        node.status = "offline";
+        node.error = error.name === "AbortError" ? "Health check timed out" : error.message || "Health check failed";
+        throw error;
+    } finally {
+        renderCurrentTab();
+    }
+}
+
+async function testAllBotNodes() {
+    if (isPingingAllNodes) return;
+    isPingingAllNodes = true;
+    renderCurrentTab();
+    try {
+        const results = await Promise.allSettled(botNodes.map(node => testBotNode(node.id)));
+        const onlineCount = botNodes.filter(node => node.status === "online").length;
+        const failedCount = results.filter(result => result.status === "rejected").length;
+        toast(`${onlineCount} / 15 nodes online${failedCount ? `; ${failedCount} checks failed` : ""}`);
+    } finally {
+        isPingingAllNodes = false;
+        renderCurrentTab();
+    }
+}
+
+// TAB 7: APP UPDATE AND ANNOUNCEMENT PUBLISHER
+function renderAppUpdates(container) {
+    const updateError = firestoreErrors["app-update"];
+    const data = appUpdateData;
+    container.innerHTML = `
+        <section class="app-update-card">
+            <div class="app-update-heading">
+                <div class="app-update-icon"><i class="fa-solid fa-bullhorn"></i></div>
+                <div>
+                    <p class="module-eyebrow">Remote configuration</p>
+                    <h3>Featured Update & Announcement</h3>
+                    <p class="module-description">Publish update requirements and an in-app message to all users.</p>
+                </div>
+            </div>
+            ${updateError ? `<div class="firestore-error" role="alert"><strong>${escapeHtml(updateError.title)}</strong><p>${escapeHtml(updateError.details)}</p></div>` : ""}
+            ${!appUpdateLoaded ? '<p class="update-sync-note" role="status"><i class="fa-solid fa-spinner fa-spin"></i> Connecting to live update settings...</p>' : ""}
+            <form id="appUpdateForm" class="app-update-form">
+                <label class="update-field">
+                    <span>Latest Version Code</span>
+                    <input id="updateLatestVersionCode" name="latestVersionCode" type="number" min="1" step="1" required value="${escapeHtml(data.latestVersionCode ?? "")}" placeholder="5">
+                </label>
+                <label class="update-field">
+                    <span>Version Name</span>
+                    <input id="updateVersionName" name="versionName" type="text" required maxlength="40" value="${escapeHtml(data.versionName ?? "")}" placeholder="1.1.3">
+                </label>
+                <label class="update-field">
+                    <span>Minimum Supported Version</span>
+                    <input id="updateMinimumSupportedVersion" name="minimumSupportedVersion" type="number" min="0" step="1" required value="${escapeHtml(data.minimumSupportedVersion ?? "")}" placeholder="4">
+                </label>
+                <label class="update-field update-toggle-field" for="updateForceUpdate">
+                    <span>
+                        <strong>Force Update</strong>
+                        <small>Block older versions until users update.</small>
+                    </span>
+                    <input id="updateForceUpdate" name="forceUpdate" type="checkbox" ${data.forceUpdate === true ? "checked" : ""}>
+                </label>
+                <label class="update-field update-field-wide">
+                    <span>Update Dialog Title</span>
+                    <input id="updateDialogTitle" name="dialogTitle" type="text" required maxlength="120" value="${escapeHtml(data.dialogTitle ?? "")}" placeholder="Google Sign-In &amp; Performance Fix">
+                </label>
+                <label class="update-field update-field-wide">
+                    <span>What's New / Release Notes</span>
+                    <textarea id="updateReleaseNotes" name="releaseNotes" rows="5" maxlength="4000" placeholder="Add release notes shown in the update dialog.">${escapeHtml(data.releaseNotes ?? "")}</textarea>
+                </label>
+                <label class="update-field update-field-wide">
+                    <span>In-App Announcement Banner</span>
+                    <input id="updateAnnouncementBanner" name="announcementBanner" type="text" maxlength="240" value="${escapeHtml(data.announcementBanner ?? "")}" placeholder="Get Anant PRO 50% Off this week!">
+                </label>
+                <div class="update-form-footer update-field-wide">
+                    <p class="update-sync-note"><i class="fa-solid fa-tower-broadcast"></i> Live document: <code>app_config/app_update</code></p>
+                    <button class="primary-action publish-update-button" type="submit" ${isPublishingAppUpdate ? "disabled" : ""}>
+                        <i class="fa-solid fa-cloud-arrow-up"></i> ${isPublishingAppUpdate ? "Publishing..." : "Publish Update to All Users"}
+                    </button>
+                </div>
+            </form>
+        </section>
+    `;
+
+    const form = document.getElementById("appUpdateForm");
+    form?.addEventListener("input", () => { appUpdateFormDirty = true; });
+    form?.addEventListener("change", () => { appUpdateFormDirty = true; });
+    form?.addEventListener("submit", publishAppUpdate);
+}
+
+async function publishAppUpdate(event) {
+    event.preventDefault();
+    if (isPublishingAppUpdate) return;
+
+    const form = event.currentTarget;
+    if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
+    const formData = new FormData(form);
+    const latestVersionCode = Number(formData.get("latestVersionCode"));
+    const minimumSupportedVersion = Number(formData.get("minimumSupportedVersion"));
+    if (!Number.isInteger(latestVersionCode) || latestVersionCode < 1 ||
+        !Number.isInteger(minimumSupportedVersion) || minimumSupportedVersion < 0 ||
+        minimumSupportedVersion > latestVersionCode) {
+        toast("Version codes must be whole numbers, and the minimum cannot exceed the latest version");
+        return;
+    }
+
+    const update = {
+        latestVersionCode,
+        versionName: String(formData.get("versionName") || "").trim(),
+        minimumSupportedVersion,
+        forceUpdate: formData.get("forceUpdate") === "on",
+        dialogTitle: String(formData.get("dialogTitle") || "").trim(),
+        releaseNotes: String(formData.get("releaseNotes") || "").trim(),
+        announcementBanner: String(formData.get("announcementBanner") || "").trim(),
+        updatedAt: serverTimestamp()
+    };
+
+    isPublishingAppUpdate = true;
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Publishing...';
+    }
+    let published = false;
+    try {
+        await setDoc(doc(db, "app_config", "app_update"), update, { merge: true });
+        appUpdateData = { ...update };
+        delete appUpdateData.updatedAt;
+        appUpdateFormDirty = false;
+        clearFirestoreError("app-update");
+        clearFirestoreError("action");
+        published = true;
+        toast("App update published to all users");
+    } catch (error) {
+        toast(`Unable to publish app update: ${error.message}`);
+    } finally {
+        isPublishingAppUpdate = false;
+        if (published) {
+            renderCurrentTab();
+        } else if (submitButton?.isConnected) {
+            submitButton.disabled = false;
+            submitButton.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Publish Update to All Users';
+        }
+    }
+}
+
 // --------------------------------------------------------------------------
 // 4. GLOBAL ACTION HANDLERS
 // --------------------------------------------------------------------------
@@ -1079,10 +1344,13 @@ function setupNav() {
         photos: "All Cloud Photos",
         users: "User Management",
         albums: "Albums & Folders",
-        settings: "System Settings"
+        settings: "System Settings",
+        bots: "Bot CDN (15 Nodes)",
+        app_updates: "App Update Manager"
     };
     const navigateTo = tab => {
         if (!pageTitles[tab]) return;
+        if (currentTab === "app_updates" && tab !== "app_updates") appUpdateFormDirty = false;
         document.querySelectorAll(".menu-item, .dock-item").forEach(item => {
             item.classList.toggle("active", item.dataset.tab === tab);
         });
@@ -1106,6 +1374,7 @@ function setupNav() {
         toast("Refreshing real-time data");
         renderCurrentTab();
     });
+    document.getElementById("btnPingAllNodes")?.addEventListener("click", testAllBotNodes);
 
     document.getElementById("btnLogoutAdmin")?.addEventListener("click", async () => {
         try {

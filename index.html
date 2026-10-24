@@ -143,6 +143,14 @@
                     <i class="fa-solid fa-sliders"></i>
                     <span>System Settings</span>
                 </div>
+                <div class="menu-item" data-tab="bots">
+                    <i class="fa-solid fa-server"></i>
+                    <span>Bot CDN (15 Nodes)</span>
+                </div>
+                <div class="menu-item" data-tab="app_updates">
+                    <i class="fa-solid fa-bullhorn"></i>
+                    <span>App Update Manager</span>
+                </div>
             </nav>
 
             <div class="sidebar-footer">
@@ -164,6 +172,9 @@
                 </div>
 
                 <div class="top-right">
+                    <button class="primary-action" id="btnPingAllNodes" type="button" hidden>
+                        <i class="fa-solid fa-satellite-dish"></i> Ping All 15 Nodes
+                    </button>
                     <div class="live-badge">
                         <span class="pulse-dot"></span> Online
                     </div>
@@ -195,6 +206,14 @@
             <button class="dock-item" type="button" data-tab="settings" aria-label="Settings">
                 <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/sliders.svg" alt="">
                 <span>Settings</span>
+            </button>
+            <button class="dock-item" type="button" data-tab="bots" aria-label="Bot CDN">
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/server.svg" alt="">
+                <span>Bots</span>
+            </button>
+            <button class="dock-item" type="button" data-tab="app_updates" aria-label="App updates">
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/bullhorn.svg" alt="">
+                <span>Updates</span>
             </button>
         </nav>
     </div>
