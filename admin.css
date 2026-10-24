@@ -74,6 +74,48 @@ html, body {
 .lock-card h2 { font-size: 1.4rem; font-weight: 800; margin-bottom: 6px; }
 .lock-card p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 22px; }
 
+.btn-google {
+    width: 100%;
+    min-height: 48px;
+    padding: 11px 14px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    background: #fff;
+    color: #202124;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.btn-google:hover { background: #f1f3f4; }
+.btn-google:active { transform: scale(0.98); }
+.google-icon { width: 20px; height: 20px; flex: 0 0 20px; }
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 16px;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--border);
+}
+
 .btn-bio {
     width: 100%;
     padding: 12px;

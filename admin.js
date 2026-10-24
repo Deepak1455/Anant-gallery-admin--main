@@ -3,7 +3,13 @@
 // ==========================================================================
 
 import { auth, db } from "./firebase-config.js";
-import { signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {
+    signInAnonymously,
+    signInWithPopup,
+    GoogleAuthProvider,
+    onAuthStateChanged,
+    signOut
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {
     collection,
     collectionGroup,
@@ -21,6 +27,12 @@ import {
 const SALT = "anant_master_admin_vault_2026";
 const DEFAULT_PIN = "998877";
 const PASSKEY_ID_KEY = "anant_admin_passkey_id";
+const AUTHORIZED_ADMINS = [
+    "dt8484970@gmail.com",
+    "dt4527129@gmail.com",
+    "ffdeepak4527@gmail.com",
+    "anantgalleryogr@gmail.com"
+];
 
 let currentTab = "dashboard";
 let photosData = [];
@@ -31,6 +43,39 @@ let appConfigData = { ads_enabled: true, maintenance_mode: false };
 let firestoreError = null;
 const firestoreErrors = {};
 let unsubscribePhotoFallback = null;
+let realtimeStreamStarted = false;
+
+function isAuthorizedAdmin(user) {
+    return Boolean(user?.email && AUTHORIZED_ADMINS.includes(user.email.toLowerCase()));
+}
+
+function showAdminWorkspace(message = "Admin Access Granted") {
+    document.getElementById("adminLockScreen").style.display = "none";
+    document.getElementById("adminWorkspace").style.display = "flex";
+    if (realtimeStreamStarted) return;
+    realtimeStreamStarted = true;
+    if (message) toast(message);
+    startRealtimeStream();
+}
+
+function watchAdminAuthState() {
+    onAuthStateChanged(auth, async user => {
+        if (!user || user.isAnonymous) return;
+        if (isAuthorizedAdmin(user)) {
+            showAdminWorkspace("Admin Access Granted");
+            return;
+        }
+
+        toast("Access Denied: Not an authorized admin");
+        try {
+            await signOut(auth);
+        } catch (error) {
+            toast(`Unable to sign out unauthorized account: ${error.message}`);
+        }
+    }, error => {
+        toast(`Authentication state error: ${error.message}`);
+    });
+}
 
 // URL Sanitizer (Prepends base URL if relative path)
 function sanitizeImageUrl(url) {
@@ -73,7 +118,7 @@ function reportFirestoreError(error, source = "firestore") {
     if (code === "permission-denied") {
         firestoreErrors[source] = {
             title: "Firestore access denied",
-            details: "Enable Anonymous sign-in in Firebase Console > Authentication > Sign-in method. Then configure Firestore Security Rules to authorize the required collections (user_photos, users, user_albums, and app_config/global). Anonymous sign-in does not make a user an admin; do not grant unrestricted access to every anonymous user. Use a trusted admin claim or server-verified custom token for production. Confirm the Firebase project and collection paths."
+            details: "Sign in with an authorized Google account. In Firebase Console, enable Google under Authentication > Sign-in method and add this site to Authentication > Settings > Authorized domains. Update Firestore Security Rules for user_photos, users, user_albums, and app_config/global to authorize only trusted admins (prefer a server-managed admin custom claim). The local PIN/passkey fallback signs in anonymously and cannot read protected admin data unless the rules explicitly allow it; do not grant broad access to anonymous users. Confirm the project is my-photo-d96e9 and the collection paths are correct."
         };
     } else if (["unavailable", "deadline-exceeded", "network-request-failed"].includes(code) ||
         /network|offline|unavailable/i.test(error?.message || "")) {
@@ -155,18 +200,45 @@ async function initAuth() {
     const pinInput = document.getElementById("adminMasterPin");
     const unlockBtn = document.getElementById("btnAdminUnlock");
     const bioBtn = document.getElementById("btnAdminBio");
+    const googleBtn = document.getElementById("btnAdminGoogle");
 
-    const unlockSuccess = async () => {
+    const unlockWithPinOrPasskey = async () => {
         try {
+            if (auth.currentUser && !auth.currentUser.isAnonymous && !isAuthorizedAdmin(auth.currentUser)) {
+                await signOut(auth);
+            }
             if (!auth.currentUser) await signInAnonymously(auth);
         } catch (error) {
             toast(`Firebase sign-in failed: ${error.message}. Enable Anonymous sign-in in Firebase Console.`);
             return;
         }
-        document.getElementById("adminLockScreen").style.display = "none";
-        document.getElementById("adminWorkspace").style.display = "flex";
-        toast("Admin Access Granted");
-        startRealtimeStream();
+        showAdminWorkspace("Admin Access Granted");
+    };
+
+    if (googleBtn) {
+        googleBtn.onclick = async () => {
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: "select_account" });
+            try {
+                const result = await signInWithPopup(auth, provider);
+                if (!isAuthorizedAdmin(result.user)) {
+                    try {
+                        await signOut(auth);
+                    } catch (signOutError) {
+                        console.error("Unable to sign out unauthorized account", signOutError);
+                    }
+                    toast("Access Denied: Not an authorized admin");
+                    return;
+                }
+                showAdminWorkspace("Admin Access Granted");
+            } catch (error) {
+                if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
+                    toast("Google sign-in was cancelled");
+                    return;
+                }
+                toast(`Google sign-in failed: ${error.message}`);
+            }
+        };
     };
 
     if (unlockBtn) {
@@ -175,7 +247,7 @@ async function initAuth() {
             if (!pin) return toast("Enter 6-digit Master PIN");
             const enteredHash = await hashPin(pin);
             if (enteredHash === savedHash) {
-                await unlockSuccess();
+                await unlockWithPinOrPasskey();
             } else {
                 toast("Invalid Security PIN");
                 pinInput.value = "";
@@ -227,7 +299,7 @@ async function initAuth() {
                     }
                     localStorage.setItem(PASSKEY_ID_KEY, btoa(String.fromCharCode(...new Uint8Array(credential.rawId))));
                     toast("Passkey registered");
-                    await unlockSuccess();
+                    await unlockWithPinOrPasskey();
                 } catch (error) {
                     toast(`Passkey registration failed: ${error.message}. Use your PIN.`);
                 }
@@ -246,7 +318,7 @@ async function initAuth() {
                         }
                     });
                     if (credential instanceof PublicKeyCredential) {
-                        await unlockSuccess();
+                        await unlockWithPinOrPasskey();
                     } else {
                         toast("Passkey verification did not complete. Enter your PIN.");
                     }
@@ -753,10 +825,16 @@ function setupNav() {
         renderCurrentTab();
     });
 
-    document.getElementById("btnLogoutAdmin")?.addEventListener("click", () => {
+    document.getElementById("btnLogoutAdmin")?.addEventListener("click", async () => {
+        try {
+            await signOut(auth);
+        } catch (error) {
+            toast(`Unable to sign out: ${error.message}`);
+        }
         location.reload();
     });
 }
 
+watchAdminAuthState();
 initAuth();
 setupNav();
