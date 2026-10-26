@@ -1137,10 +1137,11 @@ function renderAppUpdates(container) {
                     <div class="settings-card-panel" id="announcementPanel" aria-hidden="false">
                         <div class="settings-card-panel-inner">
                             <div class="settings-card-content">
-                                <label class="update-field">
-                                    <span>Announcement Text / Message</span>
-                                    <textarea id="announcementText" rows="4" maxlength="500" placeholder="Write the message shown in the app banner.">${escapeHtml(announcementText)}</textarea>
-                                </label>
+                                <div class="update-field">
+                                    <label for="announcementText">Announcement Text / Message</label>
+                                    <textarea id="announcementText" rows="4" maxlength="1000" placeholder="Write the message shown in the app banner.">${escapeHtml(announcementText)}</textarea>
+                                    <div id="announcementCharacterMeterMount"></div>
+                                </div>
                                 <footer class="config-card-actions">
                                     <button class="config-save-button announcement-save-button" id="btnSaveAnnouncement" type="submit" ${appUpdateLoaded && !savingAppUpdateCards.has("announcement") ? "" : "disabled"}>Publish Announcement</button>
                                 </footer>
@@ -1184,6 +1185,13 @@ function renderAppUpdates(container) {
         </section>
     `;
 
+    const counterTemplate = document.getElementById("announcementCharacterMeterTemplate");
+    const counterMount = document.getElementById("announcementCharacterMeterMount");
+    if (!(counterTemplate instanceof HTMLTemplateElement) || !counterMount) {
+        throw new Error("Announcement character meter template is missing");
+    }
+    counterMount.append(counterTemplate.content.cloneNode(true));
+
     container.querySelectorAll("[data-config-card]").forEach(card => {
         const cardKey = card.dataset.configCard;
         card.addEventListener("input", () => dirtyAppUpdateCards.add(cardKey));
@@ -1206,9 +1214,29 @@ function renderAppUpdates(container) {
             if (panel) panel.toggleAttribute("inert", isExpanded);
         });
     });
+    const announcementTextarea = document.getElementById("announcementText");
+    announcementTextarea?.addEventListener("input", () => updateAnnouncementCharacterCounter(announcementTextarea));
+    if (announcementTextarea) updateAnnouncementCharacterCounter(announcementTextarea);
     document.getElementById("formVersionControl")?.addEventListener("submit", saveVersionControl);
     document.getElementById("formAnnouncement")?.addEventListener("submit", saveAnnouncement);
     document.getElementById("formMaintenance")?.addEventListener("submit", saveMaintenanceMode);
+}
+
+function updateAnnouncementCharacterCounter(textarea) {
+    const length = textarea.value.length;
+    const counter = document.getElementById("announcementCharCounter");
+    if (!counter) return;
+    counter.innerText = `${length} / 1000`;
+    counter.style.color = length === 1000 ? "#da3633" : length >= 900 ? "#d29922" : "#58a6ff";
+}
+
+function truncateAnnouncementText(text) {
+    let result = "";
+    for (const character of text) {
+        if (result.length + character.length > 1000) break;
+        result += character;
+    }
+    return result;
 }
 
 function updateAppUpdateStatus(cardKey, enabled) {
@@ -1264,6 +1292,10 @@ function syncAppUpdateForm() {
     syncCard("announcement", {
         announcementText: data.announcement_banner ?? data.announcementBanner ?? ""
     }, announcementEnabled);
+    const announcementTextarea = document.getElementById("announcementText");
+    if (announcementTextarea && !dirtyAppUpdateCards.has("announcement")) {
+        updateAnnouncementCharacterCounter(announcementTextarea);
+    }
     syncCard("maintenance", {
         maintenanceMessage: data.maintenance_message ?? data.maintenanceMessage ?? ""
     }, maintenanceMode);
@@ -1331,9 +1363,13 @@ async function saveVersionControl(event) {
 
 async function saveAnnouncement(event) {
     event.preventDefault();
+    const textarea = document.getElementById("announcementText");
+    const announcementText = truncateAnnouncementText(textarea.value);
+    textarea.value = announcementText;
+    updateAnnouncementCharacterCounter(textarea);
     const payload = {
         announcement_enabled: document.getElementById("switchAnnouncement").checked,
-        announcement_banner: document.getElementById("announcementText").value.trim(),
+        announcement_banner: announcementText.trim(),
         announcement_updated_at: serverTimestamp()
     };
     await saveAppUpdateCard("announcement", "btnSaveAnnouncement", payload, "Announcement Updated Successfully",

@@ -846,6 +846,31 @@ html, body {
 .app-update-screen .update-field textarea { min-height: 112px; resize: vertical; line-height: 1.5; }
 .app-update-screen .update-field input:focus,
 .app-update-screen .update-field textarea:focus { border-color: #34d399; box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12); }
+#announcementText {
+    min-height: 112px;
+    border: 1px solid #30363d;
+    background: #161b22;
+    line-height: 1.6;
+}
+#announcementText:focus {
+    border-color: #388bfd;
+    box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.2);
+}
+.announcement-character-meter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 6px;
+}
+.announcement-character-meter > span:first-child { color: #8b949e; font-size: 0.75rem; font-weight: 400; }
+.announcement-character-meter > span:last-child {
+    color: #58a6ff;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
 .optional-label { margin-left: 5px; color: #858585; font-size: 0.7rem; font-weight: 400; }
 .app-update-screen .settings-card-header { flex-wrap: wrap; }
 .app-update-screen .card-heading-button { flex: 1 1 300px; }
