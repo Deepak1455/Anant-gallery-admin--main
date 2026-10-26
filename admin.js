@@ -491,9 +491,10 @@ function startRealtimeStream() {
     onSnapshot(doc(db, "app_config", "global"), (snap) => {
         clearFirestoreError("config");
         if (snap.exists()) {
-            appConfigData = snap.data();
+            const config = snap.data();
+            appConfigData = { ...config, show_pro_card: config.show_pro_card !== false };
         } else {
-            appConfigData = { ads_enabled: true };
+            appConfigData = { ads_enabled: true, show_pro_card: true };
         }
         if (currentTab === "settings" || currentTab === "dashboard") {
             renderCurrentTab();
@@ -895,6 +896,7 @@ function renderSettings(container) {
                             <i class="fa-solid fa-triangle-exclamation" style="margin-right:8px;"></i> maintenance_mode: ${isMaintOn ? 'ACTIVE' : 'OFF'}
                         </button>
                     </div>
+                    <div id="proCardConfigSlot" style="margin-top:16px;"></div>
                 </div>
 
                 <!-- Biometric Re-register -->
@@ -919,6 +921,29 @@ function renderSettings(container) {
         </div>
     `;
 
+    const proCardTemplate = document.getElementById("proCardConfigTemplate");
+    const proCardSlot = document.getElementById("proCardConfigSlot");
+    if (proCardTemplate && proCardSlot) {
+        proCardSlot.append(proCardTemplate.content.cloneNode(true));
+        const switchEl = document.getElementById("switchShowProCard");
+        switchEl.checked = appConfigData.show_pro_card !== false;
+        updateProCardStatus(switchEl.checked);
+        switchEl.addEventListener("change", async () => {
+            const showProCard = switchEl.checked;
+            updateProCardStatus(showProCard);
+            try {
+                await setDoc(doc(db, "app_config", "global"), { show_pro_card: showProCard }, { merge: true });
+                clearFirestoreError("action");
+                toast(showProCard ? "PRO Card is now VISIBLE in app" : "PRO Card is now HIDDEN from app");
+            } catch (error) {
+                switchEl.checked = appConfigData.show_pro_card !== false;
+                updateProCardStatus(switchEl.checked);
+                toast(`Config update failed: ${error.message}`);
+                reportFirestoreError(error, "action");
+            }
+        });
+    }
+
     document.getElementById("btnSavePin")?.addEventListener("click", async () => {
         const val = document.getElementById("newPinInput").value.trim();
         if (val.length !== 6 || isNaN(val)) return toast("PIN must be 6 digits");
@@ -932,6 +957,14 @@ function renderSettings(container) {
         localStorage.removeItem(PASSKEY_ID_KEY);
         toast("Passkey removed. Tap biometric button to register again.");
     });
+}
+
+function updateProCardStatus(isVisible) {
+    const badge = document.getElementById("badgeProCardStatus");
+    if (!badge) return;
+    badge.textContent = isVisible ? "VISIBLE" : "HIDDEN";
+    badge.classList.toggle("is-active", isVisible);
+    badge.classList.toggle("is-disabled", !isVisible);
 }
 
 // TAB 6: TELEGRAM BOT NODE HEALTH

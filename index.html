@@ -226,6 +226,23 @@
         </div>
     </template>
 
+    <template id="proCardConfigTemplate">
+        <section class="pro-card-config-panel">
+            <div class="pro-card-config-copy">
+                <div>
+                    <h4>Anant PRO Card in Mobile App</h4>
+                    <p>Control whether the Anant Gallery PRO card is shown in the mobile app.</p>
+                </div>
+                <span id="badgeProCardStatus" class="config-status-badge" role="status">VISIBLE</span>
+            </div>
+            <label class="switch-control" for="switchShowProCard">
+                <input id="switchShowProCard" type="checkbox" aria-label="Anant PRO Card in Mobile App">
+                <span class="switch-track" aria-hidden="true"></span>
+                <span class="switch-state">Show card in app</span>
+            </label>
+        </section>
+    </template>
+
     <script type="module" src="admin.js"></script>
 </body>
 </html>

@@ -897,6 +897,25 @@ html, body {
     box-shadow: 0 0 12px rgba(16, 185, 129, 0.1);
 }
 .config-status-badge.is-disabled { color: #a3a3a3; }
+.pro-card-config-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    background: #080808;
+}
+.pro-card-config-copy {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+}
+.pro-card-config-copy h4 { margin: 0 0 5px; color: #f3f4f6; font-size: 0.9rem; }
+.pro-card-config-copy p { margin: 0; color: #8b949e; font-size: 0.76rem; line-height: 1.5; }
+.pro-card-config-panel .switch-control { color: #d1d5db; white-space: nowrap; }
 .config-status-badge.maintenance-status.is-maintenance {
     border-color: rgba(167, 139, 250, 0.8);
     background: rgba(124, 58, 237, 0.2);
@@ -1237,6 +1256,9 @@ html, body {
     .config-card-actions { justify-content: stretch; }
     .config-save-button { width: 100%; }
     .config-status-badge { font-size: 0.56rem; }
+    .pro-card-config-panel { align-items: flex-start; flex-direction: column; gap: 12px; padding: 13px; }
+    .pro-card-config-copy { width: 100%; justify-content: space-between; gap: 8px; }
+    .pro-card-config-copy p { max-width: 34ch; }
 }
 
 @media (prefers-reduced-motion: reduce) {
