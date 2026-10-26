@@ -43,11 +43,11 @@ let photosData = [];
 let fallbackPhotosData = [];
 let albumsData = [];
 let usersProfileData = {};
-let appConfigData = { ads_enabled: true, maintenance_mode: false };
+let appConfigData = { ads_enabled: true };
 let appUpdateData = {};
 let appUpdateLoaded = false;
-let appUpdateFormDirty = false;
-let isPublishingAppUpdate = false;
+const dirtyAppUpdateCards = new Set();
+const savingAppUpdateCards = new Set();
 const botNodes = Array.from({ length: 15 }, (_, index) => ({
     id: index + 1,
     status: "unknown",
@@ -170,7 +170,7 @@ function reportFirestoreError(error, source = "firestore") {
         };
     }
     firestoreError = Object.values(firestoreErrors)[0] || null;
-    if (currentTab === "app_updates" && appUpdateFormDirty) return;
+    if (currentTab === "app_updates" && dirtyAppUpdateCards.size > 0) return;
     renderCurrentTab();
 }
 
@@ -493,11 +493,12 @@ function startRealtimeStream() {
         if (snap.exists()) {
             appConfigData = snap.data();
         } else {
-            appConfigData = { ads_enabled: true, maintenance_mode: false };
+            appConfigData = { ads_enabled: true };
         }
-        if (currentTab === "settings" || currentTab === "dashboard" ||
-            (currentTab === "app_updates" && !appUpdateFormDirty)) {
+        if (currentTab === "settings" || currentTab === "dashboard") {
             renderCurrentTab();
+        } else if (currentTab === "app_updates") {
+            syncAppUpdateForm();
         }
     }, error => reportFirestoreError(error, "config"));
 
@@ -505,7 +506,7 @@ function startRealtimeStream() {
         clearFirestoreError("app-update");
         appUpdateData = snap.exists() ? snap.data() : {};
         appUpdateLoaded = true;
-        if (currentTab === "app_updates" && !appUpdateFormDirty) renderCurrentTab();
+        if (currentTab === "app_updates") syncAppUpdateForm();
     }, error => reportFirestoreError(error, "app-update"));
 }
 
@@ -1038,28 +1039,37 @@ async function testAllBotNodes() {
     }
 }
 
-// TAB 7: APP UPDATE AND ANNOUNCEMENT PUBLISHER
+// TAB 7: APP UPDATE MANAGER
 function renderAppUpdates(container) {
     const updateError = firestoreErrors["app-update"] || firestoreErrors.config;
     const data = appUpdateData;
-    const announcementEnabled = data.announcementEnabled ?? Boolean(data.announcementBanner);
-    const maintenanceMode = data.maintenanceMode ?? (appConfigData.maintenance_mode === true);
+    const versionEnabled = data.is_update_enabled ?? data.forceUpdate === true;
+    const announcementEnabled = data.announcement_enabled ?? data.announcementEnabled ?? Boolean(data.announcement_banner ?? data.announcementBanner);
+    const maintenanceMode = appConfigData.maintenance_mode ?? data.maintenance_mode ?? data.maintenanceMode ?? false;
+    const latestVersionCode = data.latest_version_code ?? data.latestVersionCode ?? "";
+    const latestVersionName = data.latest_version_name ?? data.versionName ?? "";
+    const minSupportedVersion = data.min_supported_version ?? data.minimumSupportedVersion ?? "";
+    const updateTitle = data.update_title ?? data.dialogTitle ?? "";
+    const releaseNotes = data.release_notes ?? data.releaseNotes ?? "";
+    const announcementText = data.announcement_banner ?? data.announcementBanner ?? "";
+    const maintenanceMessage = data.maintenance_message ?? data.maintenanceMessage ?? "";
+
     container.innerHTML = `
         <section class="app-update-screen">
             <header class="app-update-heading">
-                <div class="app-update-icon"><i class="fa-solid fa-sliders"></i></div>
+                <div class="app-update-icon"><i class="fa-solid fa-sliders" aria-hidden="true"></i></div>
                 <div>
                     <p class="module-eyebrow">Remote configuration</p>
                     <h3>App Update Manager</h3>
-                    <p class="module-description">Manage app releases, in-app announcements, and service availability.</p>
+                    <p class="module-description">Configure app releases, in-app announcements, and service availability independently.</p>
                 </div>
             </header>
             ${updateError ? `<div class="firestore-error" role="alert"><strong>${escapeHtml(updateError.title)}</strong><p>${escapeHtml(updateError.details)}</p></div>` : ""}
-            ${!appUpdateLoaded ? '<p class="update-sync-note" role="status"><i class="fa-solid fa-spinner fa-spin"></i> Connecting to live update settings...</p>' : ""}
-            <form id="appUpdateForm" class="app-update-form">
-                <section class="app-update-card settings-card">
+            ${!appUpdateLoaded ? '<p class="update-sync-note" role="status">Connecting to live update settings...</p>' : ""}
+            <div class="app-update-form">
+                <form id="formVersionControl" class="app-update-card settings-card" data-config-card="version">
                     <header class="settings-card-header">
-                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="updateCardPanel">
+                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="versionControlPanel">
                             <span class="settings-card-icon"><i class="fa-solid fa-code-branch" aria-hidden="true"></i></span>
                             <span class="settings-card-heading">
                                 <strong>App Update &amp; Version Control</strong>
@@ -1067,45 +1077,49 @@ function renderAppUpdates(container) {
                             </span>
                             <i class="fa-solid fa-chevron-down card-chevron" aria-hidden="true"></i>
                         </button>
+                        <span id="versionControlStatus" class="config-status-badge ${versionEnabled ? "is-active" : "is-disabled"}" role="status">${versionEnabled ? "ACTIVE" : "DISABLED"}</span>
                         <label class="switch-control">
-                            <input id="updateForceUpdate" name="forceUpdate" type="checkbox" role="switch" aria-label="Force Update" ${data.forceUpdate === true ? "checked" : ""}>
+                            <input id="switchVersionControl" type="checkbox" role="switch" aria-label="Enable version control" ${versionEnabled ? "checked" : ""}>
                             <span class="switch-track" aria-hidden="true"></span>
-                            <span class="switch-state" aria-hidden="true">${data.forceUpdate === true ? "On" : "Off"}</span>
+                            <span class="switch-state" aria-hidden="true">${versionEnabled ? "On" : "Off"}</span>
                         </label>
                     </header>
-                    <div class="settings-card-panel" id="updateCardPanel" aria-hidden="false">
+                    <div class="settings-card-panel" id="versionControlPanel" aria-hidden="false">
                         <div class="settings-card-panel-inner">
                             <div class="settings-card-content">
                                 <div class="update-field-grid">
                                     <label class="update-field">
                                         <span>Version Code</span>
-                                        <input id="updateLatestVersionCode" name="latestVersionCode" type="number" min="1" step="1" required value="${escapeHtml(data.latestVersionCode ?? "")}" placeholder="5">
+                                        <input id="latestVersionCode" type="number" min="1" step="1" required value="${escapeHtml(latestVersionCode)}" placeholder="5">
                                     </label>
                                     <label class="update-field">
                                         <span>Version Name</span>
-                                        <input id="updateVersionName" name="versionName" type="text" required maxlength="40" value="${escapeHtml(data.versionName ?? "")}" placeholder="1.1.3">
+                                        <input id="latestVersionName" type="text" maxlength="40" required value="${escapeHtml(latestVersionName)}" placeholder="1.1.3">
                                     </label>
                                     <label class="update-field">
                                         <span>Minimum Supported Version</span>
-                                        <input id="updateMinimumSupportedVersion" name="minimumSupportedVersion" type="number" min="0" step="1" required value="${escapeHtml(data.minimumSupportedVersion ?? "")}" placeholder="4">
+                                        <input id="minSupportedVersion" type="number" min="0" step="1" required value="${escapeHtml(minSupportedVersion)}" placeholder="4">
                                     </label>
                                     <label class="update-field">
                                         <span>Update Dialog Title</span>
-                                        <input id="updateDialogTitle" name="dialogTitle" type="text" required maxlength="120" value="${escapeHtml(data.dialogTitle ?? "")}" placeholder="Google Sign-In &amp; Performance Fix">
+                                        <input id="updateTitle" type="text" maxlength="120" required value="${escapeHtml(updateTitle)}" placeholder="Google Sign-In &amp; Performance Fix">
                                     </label>
                                     <label class="update-field update-field-wide">
                                         <span>Release Notes</span>
-                                        <textarea id="updateReleaseNotes" name="releaseNotes" rows="5" maxlength="4000" placeholder="Add release notes shown in the update dialog.">${escapeHtml(data.releaseNotes ?? "")}</textarea>
+                                        <textarea id="releaseNotes" rows="5" maxlength="4000" placeholder="Add release notes shown in the update dialog.">${escapeHtml(releaseNotes)}</textarea>
                                     </label>
                                 </div>
+                                <footer class="config-card-actions">
+                                    <button class="config-save-button version-save-button" id="btnSaveVersionControl" type="submit" ${appUpdateLoaded && !savingAppUpdateCards.has("version") ? "" : "disabled"}>Save Version Settings</button>
+                                </footer>
                             </div>
                         </div>
                     </div>
-                </section>
+                </form>
 
-                <section class="app-update-card settings-card announcement-card">
+                <form id="formAnnouncement" class="app-update-card settings-card announcement-card" data-config-card="announcement">
                     <header class="settings-card-header">
-                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="announcementCardPanel">
+                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="announcementPanel">
                             <span class="settings-card-icon"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i></span>
                             <span class="settings-card-heading">
                                 <strong>In-App Announcement</strong>
@@ -1113,156 +1127,232 @@ function renderAppUpdates(container) {
                             </span>
                             <i class="fa-solid fa-chevron-down card-chevron" aria-hidden="true"></i>
                         </button>
+                        <span id="announcementStatus" class="config-status-badge ${announcementEnabled ? "is-active" : "is-disabled"}" role="status">${announcementEnabled ? "LIVE" : "MUTED"}</span>
                         <label class="switch-control">
-                            <input id="updateAnnouncementEnabled" name="announcementEnabled" type="checkbox" role="switch" aria-label="Announcement Banner" ${announcementEnabled ? "checked" : ""}>
+                            <input id="switchAnnouncement" type="checkbox" role="switch" aria-label="Enable in-app announcement" ${announcementEnabled ? "checked" : ""}>
                             <span class="switch-track" aria-hidden="true"></span>
                             <span class="switch-state" aria-hidden="true">${announcementEnabled ? "On" : "Off"}</span>
                         </label>
                     </header>
-                    <div class="settings-card-panel" id="announcementCardPanel" aria-hidden="false">
+                    <div class="settings-card-panel" id="announcementPanel" aria-hidden="false">
                         <div class="settings-card-panel-inner">
                             <div class="settings-card-content">
-                                <div class="announcement-expansion ${announcementEnabled ? "" : "is-collapsed"}" id="announcementTextPanel" aria-hidden="${!announcementEnabled}" ${announcementEnabled ? "" : "inert"}>
-                                    <div class="announcement-expansion-inner">
-                                        <label class="update-field">
-                                            <span>Announcement Text</span>
-                                            <input id="updateAnnouncementBanner" name="announcementBanner" type="text" maxlength="240" value="${escapeHtml(data.announcementBanner ?? "")}" placeholder="Get Anant PRO 50% Off this week!">
-                                        </label>
-                                    </div>
-                                </div>
+                                <label class="update-field">
+                                    <span>Announcement Text / Message</span>
+                                    <textarea id="announcementText" rows="4" maxlength="500" placeholder="Write the message shown in the app banner.">${escapeHtml(announcementText)}</textarea>
+                                </label>
+                                <footer class="config-card-actions">
+                                    <button class="config-save-button announcement-save-button" id="btnSaveAnnouncement" type="submit" ${appUpdateLoaded && !savingAppUpdateCards.has("announcement") ? "" : "disabled"}>Publish Announcement</button>
+                                </footer>
                             </div>
                         </div>
                     </div>
-                </section>
+                </form>
 
-                <section class="app-update-card settings-card">
+                <form id="formMaintenance" class="app-update-card settings-card maintenance-card" data-config-card="maintenance">
                     <header class="settings-card-header">
-                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="maintenanceCardPanel">
+                        <button class="card-heading-button" type="button" data-card-toggle aria-expanded="true" aria-controls="maintenancePanel">
                             <span class="settings-card-icon"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i></span>
                             <span class="settings-card-heading">
                                 <strong>Maintenance Mode</strong>
-                                <small>Temporarily restrict app access for maintenance.</small>
+                                <small>Emergency service availability control.</small>
                             </span>
                             <i class="fa-solid fa-chevron-down card-chevron" aria-hidden="true"></i>
                         </button>
+                        <span id="maintenanceStatus" class="config-status-badge maintenance-status ${maintenanceMode ? "is-maintenance" : "is-system-live"}" role="status">${maintenanceMode ? "UNDER MAINTENANCE" : "SYSTEM LIVE"}</span>
                         <label class="switch-control">
-                            <input id="updateMaintenanceMode" name="maintenanceMode" type="checkbox" role="switch" aria-label="Maintenance Mode" ${maintenanceMode ? "checked" : ""}>
+                            <input id="switchMaintenance" type="checkbox" role="switch" aria-label="Enable maintenance mode" ${maintenanceMode ? "checked" : ""}>
                             <span class="switch-track" aria-hidden="true"></span>
                             <span class="switch-state" aria-hidden="true">${maintenanceMode ? "On" : "Off"}</span>
                         </label>
                     </header>
-                    <div class="settings-card-panel" id="maintenanceCardPanel" aria-hidden="false">
+                    <div class="settings-card-panel" id="maintenancePanel" aria-hidden="false">
                         <div class="settings-card-panel-inner">
                             <div class="settings-card-content">
                                 <label class="update-field">
-                                    <span>Maintenance Message <small class="optional-label">Optional</small></span>
-                                    <textarea id="updateMaintenanceMessage" name="maintenanceMessage" rows="3" maxlength="500" placeholder="Let users know when service will be available again.">${escapeHtml(data.maintenanceMessage ?? "")}</textarea>
+                                    <span>Custom Maintenance Message</span>
+                                    <textarea id="maintenanceMessage" rows="3" maxlength="500" placeholder="Scheduled maintenance in progress">${escapeHtml(maintenanceMessage)}</textarea>
                                 </label>
+                                <footer class="config-card-actions">
+                                    <button class="config-save-button maintenance-save-button" id="btnSaveMaintenance" type="submit" ${appUpdateLoaded && !savingAppUpdateCards.has("maintenance") ? "" : "disabled"}>Apply Maintenance Mode</button>
+                                </footer>
                             </div>
                         </div>
                     </div>
-                </section>
-
-                <footer class="update-form-footer">
-                    <p class="update-sync-note"><i class="fa-solid fa-tower-broadcast"></i> Publishing to <code>app_config/app_update</code> and <code>app_config/global</code></p>
-                    <button class="primary-action publish-update-button" type="submit" ${isPublishingAppUpdate || !appUpdateLoaded ? "disabled" : ""}>
-                        <i class="fa-solid fa-cloud-arrow-up"></i> ${isPublishingAppUpdate ? "Publishing..." : "Save & Publish"}
-                    </button>
-                </footer>
-            </form>
+                </form>
+            </div>
         </section>
     `;
 
-    const form = document.getElementById("appUpdateForm");
-    form?.addEventListener("input", () => { appUpdateFormDirty = true; });
-    form?.addEventListener("change", event => {
-        appUpdateFormDirty = true;
-        const target = event.target;
-        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
-        const switchState = target.closest(".switch-control")?.querySelector(".switch-state");
-        if (switchState) switchState.textContent = target.checked ? "On" : "Off";
-        if (target.id === "updateAnnouncementEnabled") {
-            const textPanel = document.getElementById("announcementTextPanel");
-            textPanel?.classList.toggle("is-collapsed", !target.checked);
-            textPanel?.setAttribute("aria-hidden", String(!target.checked));
-            textPanel?.toggleAttribute("inert", !target.checked);
-        }
+    container.querySelectorAll("[data-config-card]").forEach(card => {
+        const cardKey = card.dataset.configCard;
+        card.addEventListener("input", () => dirtyAppUpdateCards.add(cardKey));
+        card.addEventListener("change", event => {
+            dirtyAppUpdateCards.add(cardKey);
+            const target = event.target;
+            if (target instanceof HTMLInputElement && target.type === "checkbox") {
+                updateAppUpdateStatus(cardKey, target.checked);
+            }
+        });
     });
-    form?.querySelectorAll("[data-card-toggle]").forEach(button => {
+    container.querySelectorAll("[data-card-toggle]").forEach(button => {
         button.addEventListener("click", () => {
-            const panel = button.closest(".settings-card")?.querySelector(".settings-card-panel");
+            const card = button.closest(".settings-card");
+            const panel = card?.querySelector(".settings-card-panel");
             const isExpanded = button.getAttribute("aria-expanded") === "true";
             button.setAttribute("aria-expanded", String(!isExpanded));
-            button.closest(".settings-card")?.classList.toggle("is-collapsed", isExpanded);
+            card?.classList.toggle("is-collapsed", isExpanded);
             panel?.setAttribute("aria-hidden", String(isExpanded));
             if (panel) panel.toggleAttribute("inert", isExpanded);
         });
     });
-    form?.addEventListener("submit", publishAppUpdate);
+    document.getElementById("formVersionControl")?.addEventListener("submit", saveVersionControl);
+    document.getElementById("formAnnouncement")?.addEventListener("submit", saveAnnouncement);
+    document.getElementById("formMaintenance")?.addEventListener("submit", saveMaintenanceMode);
 }
 
-async function publishAppUpdate(event) {
-    event.preventDefault();
-    if (isPublishingAppUpdate) return;
+function updateAppUpdateStatus(cardKey, enabled) {
+    const status = document.getElementById({
+        version: "versionControlStatus",
+        announcement: "announcementStatus",
+        maintenance: "maintenanceStatus"
+    }[cardKey]);
+    const switchState = document.querySelector(`[data-config-card="${cardKey}"] .switch-state`);
+    const enabledLabel = {
+        version: "ACTIVE",
+        announcement: "LIVE",
+        maintenance: "UNDER MAINTENANCE"
+    }[cardKey];
+    const disabledLabel = {
+        version: "DISABLED",
+        announcement: "MUTED",
+        maintenance: "SYSTEM LIVE"
+    }[cardKey];
+    switchState.textContent = enabled ? "On" : "Off";
+    status.textContent = enabled ? enabledLabel : disabledLabel;
+    status.classList.toggle("is-active", cardKey !== "maintenance" && enabled);
+    status.classList.toggle("is-disabled", cardKey !== "maintenance" && !enabled);
+    status.classList.toggle("is-maintenance", cardKey === "maintenance" && enabled);
+    status.classList.toggle("is-system-live", cardKey === "maintenance" && !enabled);
+}
 
+function syncAppUpdateForm() {
+    const data = appUpdateData;
+    const versionEnabled = data.is_update_enabled ?? data.forceUpdate === true;
+    const announcementEnabled = data.announcement_enabled ?? data.announcementEnabled ?? Boolean(data.announcement_banner ?? data.announcementBanner);
+    const maintenanceMode = appConfigData.maintenance_mode ?? data.maintenance_mode ?? data.maintenanceMode ?? false;
+    const syncCard = (cardKey, values, enabled) => {
+        if (dirtyAppUpdateCards.has(cardKey)) return;
+        for (const [id, value] of Object.entries(values)) {
+            const field = document.getElementById(id);
+            if (field) field.value = value ?? "";
+        }
+        const toggle = document.querySelector(`[data-config-card="${cardKey}"] input[role="switch"]`);
+        if (toggle) {
+            toggle.checked = enabled;
+            updateAppUpdateStatus(cardKey, enabled);
+        }
+    };
+
+    syncCard("version", {
+        latestVersionCode: data.latest_version_code ?? data.latestVersionCode ?? "",
+        latestVersionName: data.latest_version_name ?? data.versionName ?? "",
+        minSupportedVersion: data.min_supported_version ?? data.minimumSupportedVersion ?? "",
+        updateTitle: data.update_title ?? data.dialogTitle ?? "",
+        releaseNotes: data.release_notes ?? data.releaseNotes ?? ""
+    }, versionEnabled);
+    syncCard("announcement", {
+        announcementText: data.announcement_banner ?? data.announcementBanner ?? ""
+    }, announcementEnabled);
+    syncCard("maintenance", {
+        maintenanceMessage: data.maintenance_message ?? data.maintenanceMessage ?? ""
+    }, maintenanceMode);
+}
+
+async function saveAppUpdateCard(cardKey, buttonId, payload, successMessage, save) {
+    if (savingAppUpdateCards.has(cardKey)) return;
+    const button = document.getElementById(buttonId);
+    if (!button || !appUpdateLoaded) return;
+
+    const originalLabel = button.textContent;
+    savingAppUpdateCards.add(cardKey);
+    button.disabled = true;
+    button.textContent = "Saving...";
+    dirtyAppUpdateCards.add(cardKey);
+    try {
+        await save(payload);
+        appUpdateData = { ...appUpdateData, ...payload };
+        if (cardKey === "maintenance") appConfigData = { ...appConfigData, maintenance_mode: payload.maintenance_mode };
+        dirtyAppUpdateCards.delete(cardKey);
+        clearFirestoreError("app-update");
+        clearFirestoreError("config");
+        clearFirestoreError("action");
+        if (!firestoreErrors["app-update"] && !firestoreErrors.config) {
+            document.querySelector("#contentContainer .firestore-error")?.remove();
+        }
+        toast(successMessage);
+        syncAppUpdateForm();
+    } catch (error) {
+        toast(`Unable to save ${cardKey} settings: ${error.message}`);
+    } finally {
+        savingAppUpdateCards.delete(cardKey);
+        if (button.isConnected) {
+            button.disabled = false;
+            button.textContent = originalLabel;
+        }
+    }
+}
+
+async function saveVersionControl(event) {
+    event.preventDefault();
     const form = event.currentTarget;
     if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
-    const formData = new FormData(form);
-    const latestVersionCode = Number(formData.get("latestVersionCode"));
-    const minimumSupportedVersion = Number(formData.get("minimumSupportedVersion"));
+    const latestVersionCode = Number(document.getElementById("latestVersionCode").value);
+    const minSupportedVersion = Number(document.getElementById("minSupportedVersion").value);
     if (!Number.isInteger(latestVersionCode) || latestVersionCode < 1 ||
-        !Number.isInteger(minimumSupportedVersion) || minimumSupportedVersion < 0 ||
-        minimumSupportedVersion > latestVersionCode) {
+        !Number.isInteger(minSupportedVersion) || minSupportedVersion < 0 ||
+        minSupportedVersion > latestVersionCode) {
         toast("Version codes must be whole numbers, and the minimum cannot exceed the latest version");
         return;
     }
 
-    const update = {
-        latestVersionCode,
-        versionName: String(formData.get("versionName") || "").trim(),
-        minimumSupportedVersion,
-        forceUpdate: formData.get("forceUpdate") === "on",
-        announcementEnabled: formData.get("announcementEnabled") === "on",
-        dialogTitle: String(formData.get("dialogTitle") || "").trim(),
-        releaseNotes: String(formData.get("releaseNotes") || "").trim(),
-        announcementBanner: String(formData.get("announcementBanner") || "").trim(),
-        maintenanceMode: formData.get("maintenanceMode") === "on",
-        maintenanceMessage: String(formData.get("maintenanceMessage") || "").trim(),
-        updatedAt: serverTimestamp()
+    const payload = {
+        is_update_enabled: document.getElementById("switchVersionControl").checked,
+        latest_version_code: latestVersionCode,
+        latest_version_name: document.getElementById("latestVersionName").value.trim(),
+        min_supported_version: minSupportedVersion,
+        update_title: document.getElementById("updateTitle").value.trim(),
+        release_notes: document.getElementById("releaseNotes").value.trim(),
+        updated_at: serverTimestamp()
     };
+    await saveAppUpdateCard("version", "btnSaveVersionControl", payload, "Version Control Settings Saved",
+        update => setDoc(doc(db, "app_config", "app_update"), update, { merge: true }));
+}
 
-    isPublishingAppUpdate = true;
-    const submitButton = form.querySelector('button[type="submit"]');
-    if (submitButton) {
-        submitButton.disabled = true;
-        submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Publishing...';
-    }
-    let published = false;
-    try {
+async function saveAnnouncement(event) {
+    event.preventDefault();
+    const payload = {
+        announcement_enabled: document.getElementById("switchAnnouncement").checked,
+        announcement_banner: document.getElementById("announcementText").value.trim(),
+        announcement_updated_at: serverTimestamp()
+    };
+    await saveAppUpdateCard("announcement", "btnSaveAnnouncement", payload, "Announcement Updated Successfully",
+        update => setDoc(doc(db, "app_config", "app_update"), update, { merge: true }));
+}
+
+async function saveMaintenanceMode(event) {
+    event.preventDefault();
+    const payload = {
+        maintenance_mode: document.getElementById("switchMaintenance").checked,
+        maintenance_message: document.getElementById("maintenanceMessage").value.trim(),
+        maintenance_updated_at: serverTimestamp()
+    };
+    await saveAppUpdateCard("maintenance", "btnSaveMaintenance", payload, "Maintenance Mode Updated", update => {
         const batch = writeBatch(db);
+        batch.set(doc(db, "app_config", "global"), update, { merge: true });
         batch.set(doc(db, "app_config", "app_update"), update, { merge: true });
-        batch.set(doc(db, "app_config", "global"), {
-            maintenance_mode: update.maintenanceMode
-        }, { merge: true });
-        await batch.commit();
-        appUpdateData = { ...update };
-        delete appUpdateData.updatedAt;
-        appUpdateFormDirty = false;
-        clearFirestoreError("app-update");
-        clearFirestoreError("action");
-        published = true;
-        toast("App update published to all users");
-    } catch (error) {
-        toast(`Unable to publish app update: ${error.message}`);
-    } finally {
-        isPublishingAppUpdate = false;
-        if (published) {
-            renderCurrentTab();
-        } else if (submitButton?.isConnected) {
-            submitButton.disabled = false;
-            submitButton.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Save &amp; Publish';
-        }
-    }
+        return batch.commit();
+    });
 }
 
 // --------------------------------------------------------------------------
@@ -1446,7 +1536,7 @@ function setupNav() {
     };
     const navigateTo = tab => {
         if (!pageTitles[tab]) return;
-        if (currentTab === "app_updates" && tab !== "app_updates") appUpdateFormDirty = false;
+        if (currentTab === "app_updates" && tab !== "app_updates") dirtyAppUpdateCards.clear();
         document.querySelectorAll(".menu-item, .dock-item").forEach(item => {
             item.classList.toggle("active", item.dataset.tab === tab);
         });
