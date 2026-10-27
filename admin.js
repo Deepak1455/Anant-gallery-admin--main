@@ -43,18 +43,7 @@ let photosData = [];
 let fallbackPhotosData = [];
 let albumsData = [];
 let usersProfileData = {};
-let appConfigData = { ads_enabled: true };
-let themeData = {};
-let globalThemeStudioDirty = false;
-let globalThemeWallpaperFile = null;
-let globalThemeWallpaperPreviewUrl = "";
-let globalThemeStudioDraft = {
-    theme_bg_url: "",
-    accent_color: "#FFD700",
-    text_color: "#FFF3C4",
-    card_opacity: 75,
-    enable_particles: false
-};
+let appConfigData = {};
 let appUpdateData = {};
 let appUpdateLoaded = false;
 const dirtyAppUpdateCards = new Set();
@@ -537,7 +526,7 @@ function startRealtimeStream() {
             const config = snap.data();
             appConfigData = { ...config, show_pro_card: config.show_pro_card !== false };
         } else {
-            appConfigData = { ads_enabled: true, show_pro_card: true };
+            appConfigData = { show_pro_card: true };
         }
         if (currentTab === "settings" || currentTab === "dashboard") {
             renderCurrentTab();
@@ -553,108 +542,13 @@ function startRealtimeStream() {
         if (currentTab === "app_updates") syncAppUpdateForm();
     }, error => reportFirestoreError(error, "app-update"));
 
-    onSnapshot(doc(db, "app_config", "theme"), snap => {
-        clearFirestoreError("theme");
-        themeData = snap.exists() ? snap.data() : {};
-        if (!globalThemeStudioDirty) {
-            globalThemeStudioDraft = {
-                theme_bg_url: typeof themeData.theme_bg_url === "string" ? themeData.theme_bg_url : "",
-                accent_color: isHexColor(themeData.accent_color) ? themeData.accent_color : "#FFD700",
-                text_color: isHexColor(themeData.text_color) ? themeData.text_color : "#FFF3C4",
-                card_opacity: Number.isFinite(Number(themeData.card_opacity))
-                    ? Math.min(100, Math.max(0, Number(themeData.card_opacity)))
-                    : 75,
-                enable_particles: themeData.enable_particles === true
-            };
-        }
-        if (currentTab === "settings" && !globalThemeStudioDirty) syncThemeStudioControls();
-    }, error => reportFirestoreError(error, "theme"));
 }
 
-function isHexColor(value) {
-    return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value);
-}
-
-function normalizeThemeWallpaperUrl(value) {
-    const url = String(value ?? "").trim();
-    return url.startsWith("/api/") ? `https://anant-gallery.vercel.app${url}` : url;
-}
-
-function syncThemeStudioControls() {
-    const urlInput = document.getElementById("txtThemeBgUrl");
-    const accentInput = document.getElementById("txtThemeAccent");
-    const textColorInput = document.getElementById("txtThemeTextColor");
-    const opacityInput = document.getElementById("rngThemeCardOpacity");
-    const particlesInput = document.getElementById("chkThemeParticles");
-    const fileName = document.getElementById("themeBgFileName");
-    if (!urlInput || !accentInput || !textColorInput || !opacityInput || !particlesInput) return;
-
-    urlInput.value = globalThemeStudioDraft.theme_bg_url;
-    accentInput.value = globalThemeStudioDraft.accent_color;
-    textColorInput.value = globalThemeStudioDraft.text_color;
-    opacityInput.value = String(globalThemeStudioDraft.card_opacity);
-    particlesInput.checked = globalThemeStudioDraft.enable_particles;
-    if (fileName) fileName.textContent = globalThemeWallpaperFile?.name || "No image selected";
-    updateThemeStudioPreview();
-}
-
-function updateThemeStudioPreview() {
-    const preview = document.getElementById("themeBgPreview");
-    const image = document.getElementById("themeBgPreviewImage");
-    const emptyState = document.getElementById("themeBgPreviewEmpty");
-    const previewCard = document.getElementById("themePreviewCard");
-    const opacityOutput = document.getElementById("themeCardOpacityValue");
-    const accent = document.getElementById("txtThemeAccent")?.value;
-    const textColor = document.getElementById("txtThemeTextColor")?.value;
-    const opacity = document.getElementById("rngThemeCardOpacity")?.value;
-    const url = globalThemeWallpaperPreviewUrl ||
-        normalizeThemeWallpaperUrl(document.getElementById("txtThemeBgUrl")?.value) ||
-        normalizeThemeWallpaperUrl(globalThemeStudioDraft.theme_bg_url);
-
-    if (!preview || !image || !emptyState || !previewCard) return;
-    previewCard.style.setProperty("--theme-preview-accent", isHexColor(accent) ? accent : "#FFD700");
-    previewCard.style.setProperty("--theme-preview-text", isHexColor(textColor) ? textColor : "#FFF3C4");
-    previewCard.style.setProperty("--theme-preview-opacity", String((Number(opacity) || 0) / 100));
-    if (opacityOutput) opacityOutput.value = `${opacity || 0}%`;
-
-    if (url) {
-        image.src = url;
-        image.hidden = false;
-        emptyState.hidden = true;
-        preview.classList.add("has-wallpaper");
-    } else {
-        image.removeAttribute("src");
-        image.hidden = true;
-        emptyState.hidden = false;
-        preview.classList.remove("has-wallpaper");
-    }
-}
-
-async function uploadThemeWallpaper(file) {
-    const formData = new FormData();
-    formData.append("file", file, file.name);
-    const response = await fetch("https://anant-gallery.vercel.app/api/upload", {
-        method: "POST",
-        mode: "cors",
-        body: formData
-    });
-    let result;
-    try {
-        result = await response.json();
-    } catch (error) {
-        throw new Error(`Wallpaper upload returned an invalid response: ${error.message}`);
-    }
-    if (!response.ok) {
-        throw new Error(result?.error || `Wallpaper upload failed with status ${response.status}`);
-    }
-
-    const imageUrl = result?.url || result?.imageUrl || result?.image_url ||
-        result?.photoUrl || result?.cdnUrl || result?.fileUrl ||
-        result?.data?.url || result?.data?.imageUrl;
-    if (typeof imageUrl !== "string" || !imageUrl.trim()) {
-        throw new Error("Wallpaper upload response did not include a CDN image URL");
-    }
-    return imageUrl.trim();
+async function resetCustomThemeToDefault() {
+    await setDoc(doc(db, "app_config", "theme"), {
+        is_custom_theme_active: false,
+        theme_bg_url: ""
+    }, { merge: true });
 }
 
 // --------------------------------------------------------------------------
@@ -1014,9 +908,6 @@ function renderAlbums(container) {
 
 // TAB 5: SYSTEM SETTINGS, REMOTE CONFIG & PIN
 function renderSettings(container) {
-    const isAdsOn = appConfigData.ads_enabled !== false;
-    const isMaintOn = appConfigData.maintenance_mode === true;
-
     container.innerHTML = `
         <div class="table-board">
             <div class="t-header">
@@ -1024,21 +915,10 @@ function renderSettings(container) {
             </div>
             
             <div class="settings-content" style="display:flex; flex-direction:column; gap:20px;">
-
-                <!-- Global Remote Killswitches -->
                 <div style="background:var(--bg-surface); padding:18px; border-radius:14px;">
-                    <h4 style="margin-bottom:6px;">Global App Switches (Realtime)</h4>
-                    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">Toggle mobile app features instantly without releasing Play Store updates</p>
-                    
-                    <div style="display:flex; flex-wrap:wrap; gap:16px;">
-                        <button class="btn-unlock" role="switch" aria-checked="${isAdsOn}" style="width:auto; padding:10px 20px; background:${isAdsOn ? '#10b981' : '#6b7280'};" onclick="window.adminToggleConfig('ads_enabled', ${!isAdsOn})">
-                            <i class="fa-solid fa-rectangle-ad" style="margin-right:8px;"></i> ads_enabled: ${isAdsOn ? 'ENABLED' : 'DISABLED'}
-                        </button>
-                        <button class="btn-unlock" role="switch" aria-checked="${isMaintOn}" style="width:auto; padding:10px 20px; background:${isMaintOn ? '#ef4444' : '#374151'};" onclick="window.adminToggleConfig('maintenance_mode', ${!isMaintOn})">
-                            <i class="fa-solid fa-triangle-exclamation" style="margin-right:8px;"></i> maintenance_mode: ${isMaintOn ? 'ACTIVE' : 'OFF'}
-                        </button>
-                    </div>
-                    <div id="proCardConfigSlot" style="margin-top:16px;"></div>
+                    <h4 style="margin-bottom:6px;">Anant PRO Card Visibility</h4>
+                    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">Control whether the Anant Gallery PRO card appears in the mobile app.</p>
+                    <div id="proCardConfigSlot"></div>
                 </div>
 
                 <!-- Biometric Re-register -->
@@ -1063,145 +943,6 @@ function renderSettings(container) {
         </div>
     `;
 
-    const themeStudioTemplate = document.getElementById("themeStudioTemplate");
-    if (!(themeStudioTemplate instanceof HTMLTemplateElement)) {
-        throw new Error("Theme studio template is missing");
-    }
-    const themeStudio = themeStudioTemplate.content.cloneNode(true);
-    const settingsContent = container.querySelector(".table-board > .settings-content");
-    if (!settingsContent) throw new Error("Settings content container is missing");
-    settingsContent.prepend(themeStudio);
-    syncThemeStudioControls();
-
-    const themeBgUrlInput = document.getElementById("txtThemeBgUrl");
-    const themeBgFileInput = document.getElementById("fileThemeBg");
-    const themeFileName = document.getElementById("themeBgFileName");
-    const themeStudioStatus = document.getElementById("themeStudioStatus");
-    const themeStudioInputs = [
-        themeBgUrlInput,
-        document.getElementById("txtThemeAccent"),
-        document.getElementById("txtThemeTextColor"),
-        document.getElementById("rngThemeCardOpacity"),
-        document.getElementById("chkThemeParticles")
-    ];
-    themeStudioInputs.forEach(input => {
-        input.addEventListener("input", () => {
-            globalThemeStudioDirty = true;
-            if (input === themeBgUrlInput) {
-                globalThemeStudioDraft.theme_bg_url = themeBgUrlInput.value.trim();
-                globalThemeWallpaperFile = null;
-                if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
-                globalThemeWallpaperPreviewUrl = "";
-                if (themeFileName) themeFileName.textContent = "No image selected";
-            } else if (input.id === "txtThemeAccent") {
-                globalThemeStudioDraft.accent_color = input.value.trim();
-            } else if (input.id === "txtThemeTextColor") {
-                globalThemeStudioDraft.text_color = input.value.trim();
-            } else if (input.id === "rngThemeCardOpacity") {
-                globalThemeStudioDraft.card_opacity = Number(input.value);
-            } else if (input.id === "chkThemeParticles") {
-                globalThemeStudioDraft.enable_particles = input.checked;
-            }
-            updateThemeStudioPreview();
-        });
-    });
-    themeBgFileInput.addEventListener("change", () => {
-        const file = themeBgFileInput.files?.[0] || null;
-        if (file && !file.type.startsWith("image/")) {
-            themeBgFileInput.value = "";
-            toast("Choose a valid image file");
-            return;
-        }
-        globalThemeWallpaperFile = file;
-        globalThemeStudioDirty = true;
-        if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
-        globalThemeWallpaperPreviewUrl = file ? URL.createObjectURL(file) : "";
-        if (themeFileName) themeFileName.textContent = file?.name || "No image selected";
-        updateThemeStudioPreview();
-    });
-    document.getElementById("btnSaveThemeStudio")?.addEventListener("click", async event => {
-        const saveButton = event.currentTarget;
-        const accentColorHex = document.getElementById("txtThemeAccent").value.trim();
-        const textColorHex = document.getElementById("txtThemeTextColor").value.trim();
-        const opacityValue = Number(document.getElementById("rngThemeCardOpacity").value);
-        const isParticlesEnabled = document.getElementById("chkThemeParticles").checked;
-        if (!isHexColor(accentColorHex) || !isHexColor(textColorHex)) {
-            toast("Enter valid six-digit hex colors for accent and text");
-            return;
-        }
-
-        let imageUrl = normalizeThemeWallpaperUrl(document.getElementById("txtThemeBgUrl").value);
-        document.getElementById("txtThemeBgUrl").value = imageUrl;
-        if (globalThemeWallpaperFile) {
-            saveButton.disabled = true;
-            if (themeStudioStatus) themeStudioStatus.textContent = "Uploading wallpaper";
-            try {
-                imageUrl = await uploadThemeWallpaper(globalThemeWallpaperFile);
-            } catch (error) {
-                toast(`Wallpaper upload failed: ${error.message}`);
-                if (themeStudioStatus) themeStudioStatus.textContent = "Upload failed";
-                saveButton.disabled = false;
-                return;
-            }
-            document.getElementById("txtThemeBgUrl").value = imageUrl;
-            globalThemeStudioDraft.theme_bg_url = imageUrl;
-            globalThemeWallpaperFile = null;
-            if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
-            globalThemeWallpaperPreviewUrl = "";
-            if (themeFileName) themeFileName.textContent = "No image selected";
-            updateThemeStudioPreview();
-        }
-        if (imageUrl) {
-            try {
-                const parsedUrl = new URL(imageUrl);
-                if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error("Unsupported protocol");
-            } catch {
-                toast("Enter a valid wallpaper image URL");
-                saveButton.disabled = false;
-                if (themeStudioStatus) themeStudioStatus.textContent = "Check wallpaper URL";
-                return;
-            }
-        }
-
-        saveButton.disabled = true;
-        if (themeStudioStatus) themeStudioStatus.textContent = "Publishing theme";
-        try {
-            await setDoc(doc(db, "app_config", "theme"), {
-                theme_bg_url: imageUrl,
-                accent_color: accentColorHex,
-                text_color: textColorHex,
-                card_opacity: opacityValue,
-                enable_particles: isParticlesEnabled,
-                is_custom_theme_active: true,
-                updated_at: new Date().toISOString()
-            }, { merge: true });
-            globalThemeStudioDraft = {
-                theme_bg_url: imageUrl,
-                accent_color: accentColorHex,
-                text_color: textColorHex,
-                card_opacity: opacityValue,
-                enable_particles: isParticlesEnabled
-            };
-            themeData = { ...themeData, ...globalThemeStudioDraft, is_custom_theme_active: true };
-            globalThemeStudioDirty = false;
-            globalThemeWallpaperFile = null;
-            document.getElementById("txtThemeBgUrl").value = imageUrl;
-            if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
-            globalThemeWallpaperPreviewUrl = "";
-            if (themeFileName) themeFileName.textContent = "No image selected";
-            clearFirestoreError("action");
-            toast("Theme Wallpaper Published to Mobile App!");
-            if (themeStudioStatus) themeStudioStatus.textContent = "Theme published";
-            updateThemeStudioPreview();
-        } catch (error) {
-            toast(`Theme wallpaper update failed: ${error.message}`);
-            if (themeStudioStatus) themeStudioStatus.textContent = "Publish failed";
-            reportFirestoreError(error, "action");
-        } finally {
-            saveButton.disabled = false;
-        }
-    });
-
     const proCardTemplate = document.getElementById("proCardConfigTemplate");
     const proCardSlot = document.getElementById("proCardConfigSlot");
     if (proCardTemplate && proCardSlot) {
@@ -1212,15 +953,25 @@ function renderSettings(container) {
         switchEl.addEventListener("change", async () => {
             const showProCard = switchEl.checked;
             updateProCardStatus(showProCard);
+            let configSaved = false;
             try {
                 await setDoc(doc(db, "app_config", "global"), { show_pro_card: showProCard }, { merge: true });
+                configSaved = true;
+                appConfigData = { ...appConfigData, show_pro_card: showProCard };
+                await resetCustomThemeToDefault();
+                clearFirestoreError("theme-reset");
                 clearFirestoreError("action");
                 toast(showProCard ? "PRO Card is now VISIBLE in app" : "PRO Card is now HIDDEN from app");
             } catch (error) {
-                switchEl.checked = appConfigData.show_pro_card !== false;
-                updateProCardStatus(switchEl.checked);
-                toast(`Config update failed: ${error.message}`);
-                reportFirestoreError(error, "action");
+                if (!configSaved) {
+                    switchEl.checked = appConfigData.show_pro_card !== false;
+                    updateProCardStatus(switchEl.checked);
+                    toast(`Config update failed: ${error.message}`);
+                    reportFirestoreError(error, "action");
+                } else {
+                    toast(`PRO Card setting saved, but custom theme reset failed: ${error.message}`);
+                    reportFirestoreError(error, "theme-reset");
+                }
             }
         });
     }
@@ -1625,21 +1376,31 @@ async function saveAppUpdateCard(cardKey, buttonId, payload, successMessage, sav
     button.disabled = true;
     button.textContent = "Saving...";
     dirtyAppUpdateCards.add(cardKey);
+    let settingsSaved = false;
     try {
         await save(payload);
+        settingsSaved = true;
+        await resetCustomThemeToDefault();
         appUpdateData = { ...appUpdateData, ...payload };
         if (cardKey === "maintenance") appConfigData = { ...appConfigData, maintenance_mode: payload.maintenance_mode };
         dirtyAppUpdateCards.delete(cardKey);
         clearFirestoreError("app-update");
         clearFirestoreError("config");
         clearFirestoreError("action");
+        clearFirestoreError("theme-reset");
         if (!firestoreErrors["app-update"] && !firestoreErrors.config) {
             document.querySelector("#contentContainer .firestore-error")?.remove();
         }
         toast(successMessage);
         syncAppUpdateForm();
     } catch (error) {
-        toast(`Unable to save ${cardKey} settings: ${error.message}`);
+        if (settingsSaved) {
+            toast(`Saved ${cardKey} settings, but custom theme reset failed: ${error.message}`);
+            reportFirestoreError(error, "theme-reset");
+        } else {
+            toast(`Unable to save ${cardKey} settings: ${error.message}`);
+            reportFirestoreError(error, "app-update");
+        }
     } finally {
         savingAppUpdateCards.delete(cardKey);
         if (button.isConnected) {
@@ -1852,18 +1613,6 @@ window.adminPurgeTrash = () => {
         },
         "Empty Trash"
     );
-};
-
-window.adminToggleConfig = async (key, val) => {
-    try {
-        const configRef = doc(db, "app_config", "global");
-        await setDoc(configRef, { [key]: val }, { merge: true });
-        clearFirestoreError("action");
-        toast(`Global setting updated: ${key} = ${val}`);
-    } catch (e) {
-        toast("Config update failed: " + e.message);
-        reportFirestoreError(e, "action");
-    }
 };
 
 window.adminDeletePhoto = (documentPath) => {
