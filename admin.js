@@ -596,6 +596,11 @@ function isHexColor(value) {
     return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value);
 }
 
+function normalizeThemeWallpaperUrl(value) {
+    const url = String(value ?? "").trim();
+    return url.startsWith("/api/") ? `https://anant-gallery.vercel.app${url}` : url;
+}
+
 function syncThemeStudioControls() {
     const urlInput = document.getElementById("txtThemeBgUrl");
     const accentInput = document.getElementById("txtThemeAccent");
@@ -624,8 +629,8 @@ function updateThemeStudioPreview() {
     const textColor = document.getElementById("txtThemeTextColor")?.value;
     const opacity = document.getElementById("rngThemeCardOpacity")?.value;
     const url = globalThemeWallpaperPreviewUrl ||
-        document.getElementById("txtThemeBgUrl")?.value.trim() ||
-        globalThemeStudioDraft.theme_bg_url;
+        normalizeThemeWallpaperUrl(document.getElementById("txtThemeBgUrl")?.value) ||
+        normalizeThemeWallpaperUrl(globalThemeStudioDraft.theme_bg_url);
 
     if (!preview || !image || !emptyState || !previewCard) return;
     previewCard.style.setProperty("--theme-preview-accent", isHexColor(accent) ? accent : "#FFD700");
@@ -1179,7 +1184,8 @@ function renderSettings(container) {
             return;
         }
 
-        let imageUrl = document.getElementById("txtThemeBgUrl").value.trim();
+        let imageUrl = normalizeThemeWallpaperUrl(document.getElementById("txtThemeBgUrl").value);
+        document.getElementById("txtThemeBgUrl").value = imageUrl;
         if (globalThemeWallpaperFile) {
             saveButton.disabled = true;
             if (themeStudioStatus) themeStudioStatus.textContent = "Uploading wallpaper";
