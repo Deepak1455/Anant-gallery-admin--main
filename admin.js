@@ -44,9 +44,7 @@ let fallbackPhotosData = [];
 let albumsData = [];
 let usersProfileData = {};
 let appConfigData = { ads_enabled: true };
-let globalThemeData = {};
-let selectedGlobalThemeId = "DEFAULT_LIGHT";
-let globalThemeSelectionDirty = false;
+let themeData = {};
 let globalThemeStudioDirty = false;
 let globalThemeWallpaperFile = null;
 let globalThemeWallpaperPreviewUrl = "";
@@ -57,38 +55,10 @@ let globalThemeStudioDraft = {
     card_opacity: 75,
     enable_particles: false
 };
-let modularThemeData = {};
-let modularThemeDirty = false;
-let modularThemeDraft = {
-    is_modular_theme_active: false,
-    root_bg_url: "",
-    header_bg_url: "",
-    bottom_nav_bg_url: "",
-    album_card_bg_url: "",
-    text_card_bg_url: "",
-    metric_pill_bg_url: "",
-    accent_color: "#FFD700",
-    title_color: "#FFF3C4",
-    metric_color: "#FFFFFF"
-};
-const modularThemeUrlFields = {
-    txtModularRootBg: { key: "root_bg_url", preview: "previewModularRootBg" },
-    txtModularHeaderBg: { key: "header_bg_url", preview: "previewModularHeaderBg" },
-    txtModularBottomNavBg: { key: "bottom_nav_bg_url", preview: "previewModularBottomNavBg" },
-    txtModularAlbumCardBg: { key: "album_card_bg_url", preview: "previewModularAlbumCardBg" },
-    txtModularTextCardBg: { key: "text_card_bg_url", preview: "previewModularTextCardBg" },
-    txtModularPillBg: { key: "metric_pill_bg_url", preview: "previewModularPillBg" }
-};
 let appUpdateData = {};
 let appUpdateLoaded = false;
 const dirtyAppUpdateCards = new Set();
 const savingAppUpdateCards = new Set();
-const globalThemeAccents = {
-    DIWALI_FESTIVE: "#D4AF37",
-    OLED_DARK: "#000000",
-    CYBER_VIOLET: "#8B5CF6",
-    DEFAULT_LIGHT: "#6750A4"
-};
 const botNodes = Array.from({ length: 15 }, (_, index) => ({
     id: index + 1,
     status: "unknown",
@@ -585,53 +555,20 @@ function startRealtimeStream() {
 
     onSnapshot(doc(db, "app_config", "theme"), snap => {
         clearFirestoreError("theme");
-        globalThemeData = snap.exists() ? snap.data() : {};
-        const activeTheme = globalThemeData.active_theme;
-        if (typeof activeTheme === "string" && Object.hasOwn(globalThemeAccents, activeTheme)) {
-            if (!globalThemeSelectionDirty || activeTheme === selectedGlobalThemeId) {
-                selectedGlobalThemeId = activeTheme;
-                globalThemeSelectionDirty = false;
-            }
-        } else if (!globalThemeSelectionDirty) {
-            selectedGlobalThemeId = "DEFAULT_LIGHT";
-        }
+        themeData = snap.exists() ? snap.data() : {};
         if (!globalThemeStudioDirty) {
             globalThemeStudioDraft = {
-                theme_bg_url: typeof globalThemeData.theme_bg_url === "string" ? globalThemeData.theme_bg_url : "",
-                accent_color: isHexColor(globalThemeData.accent_color) ? globalThemeData.accent_color : "#FFD700",
-                text_color: isHexColor(globalThemeData.text_color) ? globalThemeData.text_color : "#FFF3C4",
-                card_opacity: Number.isFinite(Number(globalThemeData.card_opacity))
-                    ? Math.min(100, Math.max(0, Number(globalThemeData.card_opacity)))
+                theme_bg_url: typeof themeData.theme_bg_url === "string" ? themeData.theme_bg_url : "",
+                accent_color: isHexColor(themeData.accent_color) ? themeData.accent_color : "#FFD700",
+                text_color: isHexColor(themeData.text_color) ? themeData.text_color : "#FFF3C4",
+                card_opacity: Number.isFinite(Number(themeData.card_opacity))
+                    ? Math.min(100, Math.max(0, Number(themeData.card_opacity)))
                     : 75,
-                enable_particles: globalThemeData.enable_particles === true
+                enable_particles: themeData.enable_particles === true
             };
         }
-        if (currentTab === "settings") {
-            const themeSelector = document.getElementById("selectGlobalTheme");
-            if (themeSelector && !globalThemeSelectionDirty) themeSelector.value = selectedGlobalThemeId;
-            if (!globalThemeStudioDirty) syncThemeStudioControls();
-        }
+        if (currentTab === "settings" && !globalThemeStudioDirty) syncThemeStudioControls();
     }, error => reportFirestoreError(error, "theme"));
-
-    onSnapshot(doc(db, "app_config", "theme_engine"), snap => {
-        clearFirestoreError("theme-engine");
-        modularThemeData = snap.exists() ? snap.data() : {};
-        if (!modularThemeDirty) {
-            modularThemeDraft = {
-                is_modular_theme_active: modularThemeData.is_modular_theme_active === true,
-                root_bg_url: typeof modularThemeData.root_bg_url === "string" ? modularThemeData.root_bg_url : "",
-                header_bg_url: typeof modularThemeData.header_bg_url === "string" ? modularThemeData.header_bg_url : "",
-                bottom_nav_bg_url: typeof modularThemeData.bottom_nav_bg_url === "string" ? modularThemeData.bottom_nav_bg_url : "",
-                album_card_bg_url: typeof modularThemeData.album_card_bg_url === "string" ? modularThemeData.album_card_bg_url : "",
-                text_card_bg_url: typeof modularThemeData.text_card_bg_url === "string" ? modularThemeData.text_card_bg_url : "",
-                metric_pill_bg_url: typeof modularThemeData.metric_pill_bg_url === "string" ? modularThemeData.metric_pill_bg_url : "",
-                accent_color: typeof modularThemeData.accent_color === "string" ? modularThemeData.accent_color : "#FFD700",
-                title_color: typeof modularThemeData.title_color === "string" ? modularThemeData.title_color : "#FFF3C4",
-                metric_color: typeof modularThemeData.metric_color === "string" ? modularThemeData.metric_color : "#FFFFFF"
-            };
-        }
-        if (currentTab === "settings" && !modularThemeDirty) syncModularThemeControls();
-    }, error => reportFirestoreError(error, "theme-engine"));
 }
 
 function isHexColor(value) {
@@ -659,29 +596,6 @@ function syncThemeStudioControls() {
     particlesInput.checked = globalThemeStudioDraft.enable_particles;
     if (fileName) fileName.textContent = globalThemeWallpaperFile?.name || "No image selected";
     updateThemeStudioPreview();
-}
-
-function syncModularThemeControls() {
-    const toggle = document.getElementById("switchModularTheme");
-    const accentInput = document.getElementById("txtModAccent");
-    const titleInput = document.getElementById("txtModTitle");
-    const metricInput = document.getElementById("txtModMetric");
-    if (!toggle || !accentInput || !titleInput || !metricInput) return;
-
-    toggle.checked = modularThemeDraft.is_modular_theme_active;
-    accentInput.value = modularThemeDraft.accent_color;
-    titleInput.value = modularThemeDraft.title_color;
-    metricInput.value = modularThemeDraft.metric_color;
-    Object.entries(modularThemeUrlFields).forEach(([inputId, field]) => {
-        const input = document.getElementById(inputId);
-        const preview = document.getElementById(field.preview);
-        if (!input || !preview) return;
-        const url = normalizeThemeWallpaperUrl(modularThemeDraft[field.key]);
-        input.value = url;
-        preview.src = url;
-        preview.hidden = !url;
-        preview.classList.toggle("has-preview", Boolean(url));
-    });
 }
 
 function updateThemeStudioPreview() {
@@ -1109,8 +1023,7 @@ function renderSettings(container) {
                 <h3><i class="fa-solid fa-sliders" style="color:var(--accent);"></i> System Remote Config & Security</h3>
             </div>
             
-            <div style="display:flex; flex-direction:column; gap:20px;">
-                <div id="globalThemeConfigSlot"></div>
+            <div class="settings-content" style="display:flex; flex-direction:column; gap:20px;">
 
                 <!-- Global Remote Killswitches -->
                 <div style="background:var(--bg-surface); padding:18px; border-radius:14px;">
@@ -1150,48 +1063,15 @@ function renderSettings(container) {
         </div>
     `;
 
-    const globalThemeTemplate = document.getElementById("globalThemeConfigTemplate");
-    const globalThemeSlot = document.getElementById("globalThemeConfigSlot");
-    if (!(globalThemeTemplate instanceof HTMLTemplateElement) || !globalThemeSlot) {
-        throw new Error("Global theme configuration template is missing");
+    const themeStudioTemplate = document.getElementById("themeStudioTemplate");
+    if (!(themeStudioTemplate instanceof HTMLTemplateElement)) {
+        throw new Error("Theme studio template is missing");
     }
-    globalThemeSlot.append(globalThemeTemplate.content.cloneNode(true));
-    const themeSelector = document.getElementById("selectGlobalTheme");
-    const applyThemeButton = document.getElementById("btnApplyGlobalTheme");
-    themeSelector.value = selectedGlobalThemeId;
+    const themeStudio = themeStudioTemplate.content.cloneNode(true);
+    const settingsContent = container.querySelector(".table-board > .settings-content");
+    if (!settingsContent) throw new Error("Settings content container is missing");
+    settingsContent.prepend(themeStudio);
     syncThemeStudioControls();
-    syncModularThemeControls();
-    themeSelector.addEventListener("change", () => {
-        selectedGlobalThemeId = themeSelector.value;
-        globalThemeSelectionDirty = true;
-    });
-    applyThemeButton.addEventListener("click", async () => {
-        const selectedThemeId = themeSelector.value;
-        const themeAccentHex = globalThemeAccents[selectedThemeId];
-        if (!themeAccentHex) {
-            toast("Select a valid app theme");
-            return;
-        }
-
-        applyThemeButton.disabled = true;
-        try {
-            await setDoc(doc(db, "app_config", "theme"), {
-                active_theme: selectedThemeId,
-                accent_color: themeAccentHex,
-                theme_updated_at: new Date().toISOString()
-            }, { merge: true });
-            globalThemeData = { ...globalThemeData, active_theme: selectedThemeId, accent_color: themeAccentHex };
-            selectedGlobalThemeId = selectedThemeId;
-            globalThemeSelectionDirty = false;
-            clearFirestoreError("action");
-            toast(`Global Theme Updated: ${selectedThemeId}`);
-        } catch (error) {
-            toast(`Global theme update failed: ${error.message}`);
-            reportFirestoreError(error, "action");
-        } finally {
-            applyThemeButton.disabled = false;
-        }
-    });
 
     const themeBgUrlInput = document.getElementById("txtThemeBgUrl");
     const themeBgFileInput = document.getElementById("fileThemeBg");
@@ -1302,7 +1182,7 @@ function renderSettings(container) {
                 card_opacity: opacityValue,
                 enable_particles: isParticlesEnabled
             };
-            globalThemeData = { ...globalThemeData, ...globalThemeStudioDraft, is_custom_theme_active: true };
+            themeData = { ...themeData, ...globalThemeStudioDraft, is_custom_theme_active: true };
             globalThemeStudioDirty = false;
             globalThemeWallpaperFile = null;
             document.getElementById("txtThemeBgUrl").value = imageUrl;
@@ -1319,82 +1199,6 @@ function renderSettings(container) {
             reportFirestoreError(error, "action");
         } finally {
             saveButton.disabled = false;
-        }
-    });
-
-    Object.entries(modularThemeUrlFields).forEach(([inputId, field]) => {
-        const input = document.getElementById(inputId);
-        input.value = normalizeThemeWallpaperUrl(modularThemeDraft[field.key]);
-        input.addEventListener("input", () => {
-            const sanitizedUrl = normalizeThemeWallpaperUrl(input.value);
-            if (input.value !== sanitizedUrl) input.value = sanitizedUrl;
-            modularThemeDraft[field.key] = sanitizedUrl;
-            modularThemeDirty = true;
-            const preview = document.getElementById(field.preview);
-            preview.src = sanitizedUrl;
-            preview.hidden = !sanitizedUrl;
-            preview.classList.toggle("has-preview", Boolean(sanitizedUrl));
-        });
-    });
-    const modularToggle = document.getElementById("switchModularTheme");
-    const modularAccent = document.getElementById("txtModAccent");
-    const modularTitle = document.getElementById("txtModTitle");
-    const modularMetric = document.getElementById("txtModMetric");
-    modularToggle.checked = modularThemeDraft.is_modular_theme_active;
-    modularAccent.value = modularThemeDraft.accent_color;
-    modularTitle.value = modularThemeDraft.title_color;
-    modularMetric.value = modularThemeDraft.metric_color;
-    [
-        [modularAccent, "accent_color"],
-        [modularTitle, "title_color"],
-        [modularMetric, "metric_color"]
-    ].forEach(([input, key]) => {
-        input.addEventListener("input", () => {
-            modularThemeDraft[key] = input.value.trim();
-            modularThemeDirty = true;
-        });
-    });
-    modularToggle.addEventListener("change", () => {
-        modularThemeDraft.is_modular_theme_active = modularToggle.checked;
-        modularThemeDirty = true;
-    });
-    document.getElementById("btnDeployModularTheme")?.addEventListener("click", async event => {
-        const deployButton = event.currentTarget;
-        const status = document.getElementById("modularThemeStatus");
-        const payload = {
-            is_modular_theme_active: modularToggle.checked,
-            root_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularRootBg").value),
-            header_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularHeaderBg").value),
-            bottom_nav_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularBottomNavBg").value),
-            album_card_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularAlbumCardBg").value),
-            text_card_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularTextCardBg").value),
-            metric_pill_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularPillBg").value),
-            accent_color: modularAccent.value.trim(),
-            title_color: modularTitle.value.trim(),
-            metric_color: modularMetric.value.trim(),
-            updated_at: new Date().toISOString()
-        };
-        Object.entries(modularThemeUrlFields).forEach(([inputId, field]) => {
-            document.getElementById(inputId).value = payload[field.key];
-        });
-
-        deployButton.disabled = true;
-        if (status) status.textContent = "Deploying theme";
-        try {
-            await setDoc(doc(db, "app_config", "theme_engine"), payload, { merge: true });
-            modularThemeData = { ...modularThemeData, ...payload };
-            modularThemeDraft = { ...payload };
-            modularThemeDirty = false;
-            syncModularThemeControls();
-            clearFirestoreError("action");
-            if (status) status.textContent = "Theme deployed";
-            toast("Modular Theme Successfully Deployed to All Users");
-        } catch (error) {
-            if (status) status.textContent = "Deployment failed";
-            toast(`Modular theme deployment failed: ${error.message}`);
-            reportFirestoreError(error, "action");
-        } finally {
-            deployButton.disabled = false;
         }
     });
 

@@ -259,153 +259,63 @@
         </section>
     </template>
 
-    <template id="globalThemeConfigTemplate">
-        <section class="global-theme-card" aria-labelledby="globalThemeHeading">
-            <header class="global-theme-heading">
-                <span class="global-theme-icon" aria-hidden="true"><i class="fa-solid fa-palette"></i></span>
-                <div>
-                    <p class="global-theme-eyebrow">Global appearance</p>
-                    <h4 id="globalThemeHeading">Dynamic App Festival &amp; Luxury Themes</h4>
-                    <p>Choose the app theme delivered to every user.</p>
-                </div>
-            </header>
-            <div class="global-theme-controls">
-                <label class="global-theme-label" for="selectGlobalTheme">App theme</label>
-                <select id="selectGlobalTheme" class="global-theme-select">
-                    <option value="DIWALI_FESTIVE">DIWALI_FESTIVE - Royal Gold Frames, Diya &amp; Festive Theme</option>
-                    <option value="OLED_DARK">OLED_DARK - Pure Minimalist OLED Black #000000</option>
-                    <option value="CYBER_VIOLET">CYBER_VIOLET - VIP Purple &amp; Cyberpunk Neon</option>
-                    <option value="DEFAULT_LIGHT">DEFAULT_LIGHT - Clean Material 3 Light Mode</option>
-                </select>
-                <p class="global-theme-note">This setting updates the theme configuration for all app users.</p>
-                <button class="global-theme-apply" id="btnApplyGlobalTheme" type="button">
-                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-                    Apply Theme to All Users
-                </button>
-            </div>
-
-            <section class="theme-studio" aria-labelledby="themeStudioHeading">
-                <div class="theme-studio-heading">
+    <template id="themeStudioTemplate">
+        <section class="theme-studio" aria-labelledby="themeStudioHeading">
+            <header class="theme-studio-heading">
+                <div class="theme-studio-title">
+                    <span class="theme-studio-icon" aria-hidden="true"><i class="fa-solid fa-palette"></i></span>
                     <div>
-                        <p class="global-theme-eyebrow">Custom appearance</p>
-                        <h5 id="themeStudioHeading">Live Theme &amp; Wallpaper Studio</h5>
+                        <p class="theme-studio-eyebrow">Appearance</p>
+                        <h4 id="themeStudioHeading">Live Theme &amp; Wallpaper Studio</h4>
                     </div>
-                    <span class="theme-studio-status" id="themeStudioStatus" role="status">Ready to customize</span>
                 </div>
-                <div class="theme-studio-layout">
-                    <div class="theme-studio-fields">
-                        <label class="theme-studio-field theme-studio-field-wide" for="txtThemeBgUrl">
-                            <span>Wallpaper CDN image URL</span>
-                            <input id="txtThemeBgUrl" type="url" inputmode="url" placeholder="https://example.com/wallpaper.jpg" autocomplete="url">
-                        </label>
-                        <label class="theme-studio-upload" for="fileThemeBg">
-                            <i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i>
-                            <span>Choose wallpaper image</span>
-                            <input id="fileThemeBg" type="file" accept="image/*">
-                        </label>
-                        <span class="theme-studio-file-name" id="themeBgFileName">No image selected</span>
-                        <label class="theme-studio-field" for="txtThemeAccent">
-                            <span>Accent &amp; border color</span>
-                            <input id="txtThemeAccent" type="text" value="#FFD700" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="#FFD700" autocomplete="off" spellcheck="false">
-                        </label>
-                        <label class="theme-studio-field" for="txtThemeTextColor">
-                            <span>Text title color</span>
-                            <input id="txtThemeTextColor" type="text" value="#FFF3C4" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="#FFF3C4" autocomplete="off" spellcheck="false">
-                        </label>
-                        <label class="theme-studio-field theme-studio-field-wide" for="rngThemeCardOpacity">
-                            <span>Card transparency <output id="themeCardOpacityValue" for="rngThemeCardOpacity">75%</output></span>
-                            <input id="rngThemeCardOpacity" type="range" min="0" max="100" step="1" value="75">
-                        </label>
-                        <label class="theme-studio-particles" for="chkThemeParticles">
-                            <input id="chkThemeParticles" type="checkbox">
-                            <span>Enable floating festive particles</span>
-                        </label>
-                    </div>
-                    <div class="theme-preview-wrap">
-                        <span class="theme-preview-label">Live preview</span>
-                        <div class="theme-bg-preview" id="themeBgPreview">
-                            <img id="themeBgPreviewImage" alt="Theme wallpaper preview" hidden>
-                            <span id="themeBgPreviewEmpty">Wallpaper preview</span>
-                            <div class="theme-preview-card" id="themePreviewCard">
-                                <span class="theme-preview-card-title">Anant Gallery</span>
-                                <span class="theme-preview-card-copy">Your memories, beautifully framed</span>
-                            </div>
+                <span class="theme-studio-status" id="themeStudioStatus" role="status">Ready to customize</span>
+            </header>
+            <div class="theme-studio-layout">
+                <div class="theme-studio-fields">
+                    <label class="theme-studio-field theme-studio-field-wide" for="txtThemeBgUrl">
+                        <span>Wallpaper CDN image URL</span>
+                        <input id="txtThemeBgUrl" type="url" inputmode="url" placeholder="https://example.com/wallpaper.jpg" autocomplete="url">
+                    </label>
+                    <label class="theme-studio-upload" for="fileThemeBg">
+                        <i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i>
+                        <span>Choose wallpaper image</span>
+                        <input id="fileThemeBg" type="file" accept="image/*">
+                    </label>
+                    <span class="theme-studio-file-name" id="themeBgFileName">No image selected</span>
+                    <label class="theme-studio-field" for="txtThemeAccent">
+                        <span>Accent &amp; border color</span>
+                        <input id="txtThemeAccent" type="text" value="#FFD700" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="#FFD700" autocomplete="off" spellcheck="false">
+                    </label>
+                    <label class="theme-studio-field" for="txtThemeTextColor">
+                        <span>Text title color</span>
+                        <input id="txtThemeTextColor" type="text" value="#FFF3C4" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="#FFF3C4" autocomplete="off" spellcheck="false">
+                    </label>
+                    <label class="theme-studio-field theme-studio-field-wide" for="rngThemeCardOpacity">
+                        <span>Card transparency <output id="themeCardOpacityValue" for="rngThemeCardOpacity">75%</output></span>
+                        <input id="rngThemeCardOpacity" type="range" min="0" max="100" step="1" value="75">
+                    </label>
+                    <label class="theme-studio-particles" for="chkThemeParticles">
+                        <input id="chkThemeParticles" type="checkbox">
+                        <span>Enable floating festive particles</span>
+                    </label>
+                </div>
+                <div class="theme-preview-wrap">
+                    <span class="theme-preview-label">Live preview</span>
+                    <div class="theme-bg-preview" id="themeBgPreview">
+                        <img id="themeBgPreviewImage" alt="Theme wallpaper preview" hidden>
+                        <span id="themeBgPreviewEmpty">Wallpaper preview</span>
+                        <div class="theme-preview-card" id="themePreviewCard">
+                            <span class="theme-preview-card-title">Anant Gallery</span>
+                            <span class="theme-preview-card-copy">Your memories, beautifully framed</span>
                         </div>
                     </div>
                 </div>
-                <button class="global-theme-apply theme-studio-save" id="btnSaveThemeStudio" type="button">
-                    <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
-                    Apply Theme Wallpaper to Mobile App
-                </button>
-            </section>
-
-            <section class="modular-theme-studio" aria-labelledby="modularThemeHeading">
-                <header class="modular-theme-heading">
-                    <div class="modular-theme-title">
-                        <span class="global-theme-icon" aria-hidden="true"><i class="fa-solid fa-layer-group"></i></span>
-                        <div>
-                            <p class="global-theme-eyebrow">Advanced customization</p>
-                            <h5 id="modularThemeHeading">Modular Multi-Layer Theme Studio</h5>
-                            <p>Customize app surfaces independently with wallpaper URLs and color overrides.</p>
-                        </div>
-                    </div>
-                    <label class="modular-theme-toggle" for="switchModularTheme">
-                        <input id="switchModularTheme" type="checkbox">
-                        <span class="modular-theme-toggle-track" aria-hidden="true"></span>
-                        <span>Enable Modular Custom Theme</span>
-                    </label>
-                </header>
-
-                <div class="modular-theme-assets">
-                    <label class="modular-asset-card" for="txtModularRootBg">
-                        <span class="modular-asset-preview"><img id="previewModularRootBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
-                        <span class="modular-asset-copy"><strong>Full-Screen Background Wallpaper</strong><input id="txtModularRootBg" type="url" inputmode="url" placeholder="https://example.com/background.jpg" autocomplete="url" aria-label="Full-Screen Background Wallpaper URL"></span>
-                    </label>
-                    <label class="modular-asset-card" for="txtModularHeaderBg">
-                        <span class="modular-asset-preview"><img id="previewModularHeaderBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
-                        <span class="modular-asset-copy"><strong>Top Header &amp; App Name Banner Wallpaper</strong><input id="txtModularHeaderBg" type="url" inputmode="url" placeholder="https://example.com/header.jpg" autocomplete="url" aria-label="Top Header and App Name Banner Wallpaper URL"></span>
-                    </label>
-                    <label class="modular-asset-card" for="txtModularBottomNavBg">
-                        <span class="modular-asset-preview"><img id="previewModularBottomNavBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
-                        <span class="modular-asset-copy"><strong>Floating Bottom Navigation Dock Skin</strong><input id="txtModularBottomNavBg" type="url" inputmode="url" placeholder="https://example.com/navigation.jpg" autocomplete="url" aria-label="Floating Bottom Navigation Dock Skin URL"></span>
-                    </label>
-                    <label class="modular-asset-card" for="txtModularAlbumCardBg">
-                        <span class="modular-asset-preview"><img id="previewModularAlbumCardBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
-                        <span class="modular-asset-copy"><strong>Albums &amp; Folders Card Texture</strong><input id="txtModularAlbumCardBg" type="url" inputmode="url" placeholder="https://example.com/albums.jpg" autocomplete="url" aria-label="Albums and Folders Card Texture URL"></span>
-                    </label>
-                    <label class="modular-asset-card" for="txtModularTextCardBg">
-                        <span class="modular-asset-preview"><img id="previewModularTextCardBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
-                        <span class="modular-asset-copy"><strong>Text &amp; Announcement Card Skin</strong><input id="txtModularTextCardBg" type="url" inputmode="url" placeholder="https://example.com/text-card.jpg" autocomplete="url" aria-label="Text and Announcement Card Skin URL"></span>
-                    </label>
-                    <label class="modular-asset-card" for="txtModularPillBg">
-                        <span class="modular-asset-preview"><img id="previewModularPillBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
-                        <span class="modular-asset-copy"><strong>Count &amp; Metrics Pill Capsule Skin</strong><input id="txtModularPillBg" type="url" inputmode="url" placeholder="https://example.com/metrics.jpg" autocomplete="url" aria-label="Count and Metrics Pill Capsule Skin URL"></span>
-                    </label>
-                </div>
-
-                <div class="modular-theme-colors">
-                    <label class="theme-studio-field" for="txtModAccent">
-                        <span>Accent color</span>
-                        <input id="txtModAccent" type="text" value="#FFD700" maxlength="7" placeholder="#FFD700" autocomplete="off" spellcheck="false">
-                    </label>
-                    <label class="theme-studio-field" for="txtModTitle">
-                        <span>Title text color</span>
-                        <input id="txtModTitle" type="text" value="#FFF3C4" maxlength="7" placeholder="#FFF3C4" autocomplete="off" spellcheck="false">
-                    </label>
-                    <label class="theme-studio-field" for="txtModMetric">
-                        <span>Metric text color</span>
-                        <input id="txtModMetric" type="text" value="#FFFFFF" maxlength="7" placeholder="#FFFFFF" autocomplete="off" spellcheck="false">
-                    </label>
-                </div>
-
-                <footer class="modular-theme-actions">
-                    <span class="modular-theme-status" id="modularThemeStatus" role="status">Theme settings ready</span>
-                    <button class="global-theme-apply modular-theme-deploy" id="btnDeployModularTheme" type="button">
-                        <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
-                        Deploy Full Theme to Mobile App
-                    </button>
-                </footer>
-            </section>
+            </div>
+            <button class="theme-studio-button theme-studio-save" id="btnSaveThemeStudio" type="button">
+                <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                Apply Theme Wallpaper to Mobile App
+            </button>
         </section>
     </template>
 
