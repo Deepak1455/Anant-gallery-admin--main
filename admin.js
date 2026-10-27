@@ -47,6 +47,16 @@ let appConfigData = { ads_enabled: true };
 let globalThemeData = {};
 let selectedGlobalThemeId = "DEFAULT_LIGHT";
 let globalThemeSelectionDirty = false;
+let globalThemeStudioDirty = false;
+let globalThemeWallpaperFile = null;
+let globalThemeWallpaperPreviewUrl = "";
+let globalThemeStudioDraft = {
+    theme_bg_url: "",
+    accent_color: "#FFD700",
+    text_color: "#FFF3C4",
+    card_opacity: 75,
+    enable_particles: false
+};
 let appUpdateData = {};
 let appUpdateLoaded = false;
 const dirtyAppUpdateCards = new Set();
@@ -563,8 +573,104 @@ function startRealtimeStream() {
         } else if (!globalThemeSelectionDirty) {
             selectedGlobalThemeId = "DEFAULT_LIGHT";
         }
-        if (currentTab === "settings") renderCurrentTab();
+        if (!globalThemeStudioDirty) {
+            globalThemeStudioDraft = {
+                theme_bg_url: typeof globalThemeData.theme_bg_url === "string" ? globalThemeData.theme_bg_url : "",
+                accent_color: isHexColor(globalThemeData.accent_color) ? globalThemeData.accent_color : "#FFD700",
+                text_color: isHexColor(globalThemeData.text_color) ? globalThemeData.text_color : "#FFF3C4",
+                card_opacity: Number.isFinite(Number(globalThemeData.card_opacity))
+                    ? Math.min(100, Math.max(0, Number(globalThemeData.card_opacity)))
+                    : 75,
+                enable_particles: globalThemeData.enable_particles === true
+            };
+        }
+        if (currentTab === "settings") {
+            const themeSelector = document.getElementById("selectGlobalTheme");
+            if (themeSelector && !globalThemeSelectionDirty) themeSelector.value = selectedGlobalThemeId;
+            if (!globalThemeStudioDirty) syncThemeStudioControls();
+        }
     }, error => reportFirestoreError(error, "theme"));
+}
+
+function isHexColor(value) {
+    return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value);
+}
+
+function syncThemeStudioControls() {
+    const urlInput = document.getElementById("txtThemeBgUrl");
+    const accentInput = document.getElementById("txtThemeAccent");
+    const textColorInput = document.getElementById("txtThemeTextColor");
+    const opacityInput = document.getElementById("rngThemeCardOpacity");
+    const particlesInput = document.getElementById("chkThemeParticles");
+    const fileName = document.getElementById("themeBgFileName");
+    if (!urlInput || !accentInput || !textColorInput || !opacityInput || !particlesInput) return;
+
+    urlInput.value = globalThemeStudioDraft.theme_bg_url;
+    accentInput.value = globalThemeStudioDraft.accent_color;
+    textColorInput.value = globalThemeStudioDraft.text_color;
+    opacityInput.value = String(globalThemeStudioDraft.card_opacity);
+    particlesInput.checked = globalThemeStudioDraft.enable_particles;
+    if (fileName) fileName.textContent = globalThemeWallpaperFile?.name || "No image selected";
+    updateThemeStudioPreview();
+}
+
+function updateThemeStudioPreview() {
+    const preview = document.getElementById("themeBgPreview");
+    const image = document.getElementById("themeBgPreviewImage");
+    const emptyState = document.getElementById("themeBgPreviewEmpty");
+    const previewCard = document.getElementById("themePreviewCard");
+    const opacityOutput = document.getElementById("themeCardOpacityValue");
+    const accent = document.getElementById("txtThemeAccent")?.value;
+    const textColor = document.getElementById("txtThemeTextColor")?.value;
+    const opacity = document.getElementById("rngThemeCardOpacity")?.value;
+    const url = globalThemeWallpaperPreviewUrl ||
+        document.getElementById("txtThemeBgUrl")?.value.trim() ||
+        globalThemeStudioDraft.theme_bg_url;
+
+    if (!preview || !image || !emptyState || !previewCard) return;
+    previewCard.style.setProperty("--theme-preview-accent", isHexColor(accent) ? accent : "#FFD700");
+    previewCard.style.setProperty("--theme-preview-text", isHexColor(textColor) ? textColor : "#FFF3C4");
+    previewCard.style.setProperty("--theme-preview-opacity", String((Number(opacity) || 0) / 100));
+    if (opacityOutput) opacityOutput.value = `${opacity || 0}%`;
+
+    if (url) {
+        image.src = url;
+        image.hidden = false;
+        emptyState.hidden = true;
+        preview.classList.add("has-wallpaper");
+    } else {
+        image.removeAttribute("src");
+        image.hidden = true;
+        emptyState.hidden = false;
+        preview.classList.remove("has-wallpaper");
+    }
+}
+
+async function uploadThemeWallpaper(file) {
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+    const response = await fetch("https://anant-gallery.vercel.app/api/upload", {
+        method: "POST",
+        mode: "cors",
+        body: formData
+    });
+    let result;
+    try {
+        result = await response.json();
+    } catch (error) {
+        throw new Error(`Wallpaper upload returned an invalid response: ${error.message}`);
+    }
+    if (!response.ok) {
+        throw new Error(result?.error || `Wallpaper upload failed with status ${response.status}`);
+    }
+
+    const imageUrl = result?.url || result?.imageUrl || result?.image_url ||
+        result?.photoUrl || result?.cdnUrl || result?.fileUrl ||
+        result?.data?.url || result?.data?.imageUrl;
+    if (typeof imageUrl !== "string" || !imageUrl.trim()) {
+        throw new Error("Wallpaper upload response did not include a CDN image URL");
+    }
+    return imageUrl.trim();
 }
 
 // --------------------------------------------------------------------------
@@ -983,6 +1089,7 @@ function renderSettings(container) {
     const themeSelector = document.getElementById("selectGlobalTheme");
     const applyThemeButton = document.getElementById("btnApplyGlobalTheme");
     themeSelector.value = selectedGlobalThemeId;
+    syncThemeStudioControls();
     themeSelector.addEventListener("change", () => {
         selectedGlobalThemeId = themeSelector.value;
         globalThemeSelectionDirty = true;
@@ -1012,6 +1119,134 @@ function renderSettings(container) {
             reportFirestoreError(error, "action");
         } finally {
             applyThemeButton.disabled = false;
+        }
+    });
+
+    const themeBgUrlInput = document.getElementById("txtThemeBgUrl");
+    const themeBgFileInput = document.getElementById("fileThemeBg");
+    const themeFileName = document.getElementById("themeBgFileName");
+    const themeStudioStatus = document.getElementById("themeStudioStatus");
+    const themeStudioInputs = [
+        themeBgUrlInput,
+        document.getElementById("txtThemeAccent"),
+        document.getElementById("txtThemeTextColor"),
+        document.getElementById("rngThemeCardOpacity"),
+        document.getElementById("chkThemeParticles")
+    ];
+    themeStudioInputs.forEach(input => {
+        input.addEventListener("input", () => {
+            globalThemeStudioDirty = true;
+            if (input === themeBgUrlInput) {
+                globalThemeStudioDraft.theme_bg_url = themeBgUrlInput.value.trim();
+                globalThemeWallpaperFile = null;
+                if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
+                globalThemeWallpaperPreviewUrl = "";
+                if (themeFileName) themeFileName.textContent = "No image selected";
+            } else if (input.id === "txtThemeAccent") {
+                globalThemeStudioDraft.accent_color = input.value.trim();
+            } else if (input.id === "txtThemeTextColor") {
+                globalThemeStudioDraft.text_color = input.value.trim();
+            } else if (input.id === "rngThemeCardOpacity") {
+                globalThemeStudioDraft.card_opacity = Number(input.value);
+            } else if (input.id === "chkThemeParticles") {
+                globalThemeStudioDraft.enable_particles = input.checked;
+            }
+            updateThemeStudioPreview();
+        });
+    });
+    themeBgFileInput.addEventListener("change", () => {
+        const file = themeBgFileInput.files?.[0] || null;
+        if (file && !file.type.startsWith("image/")) {
+            themeBgFileInput.value = "";
+            toast("Choose a valid image file");
+            return;
+        }
+        globalThemeWallpaperFile = file;
+        globalThemeStudioDirty = true;
+        if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
+        globalThemeWallpaperPreviewUrl = file ? URL.createObjectURL(file) : "";
+        if (themeFileName) themeFileName.textContent = file?.name || "No image selected";
+        updateThemeStudioPreview();
+    });
+    document.getElementById("btnSaveThemeStudio")?.addEventListener("click", async event => {
+        const saveButton = event.currentTarget;
+        const accentColorHex = document.getElementById("txtThemeAccent").value.trim();
+        const textColorHex = document.getElementById("txtThemeTextColor").value.trim();
+        const opacityValue = Number(document.getElementById("rngThemeCardOpacity").value);
+        const isParticlesEnabled = document.getElementById("chkThemeParticles").checked;
+        if (!isHexColor(accentColorHex) || !isHexColor(textColorHex)) {
+            toast("Enter valid six-digit hex colors for accent and text");
+            return;
+        }
+
+        let imageUrl = document.getElementById("txtThemeBgUrl").value.trim();
+        if (globalThemeWallpaperFile) {
+            saveButton.disabled = true;
+            if (themeStudioStatus) themeStudioStatus.textContent = "Uploading wallpaper";
+            try {
+                imageUrl = await uploadThemeWallpaper(globalThemeWallpaperFile);
+            } catch (error) {
+                toast(`Wallpaper upload failed: ${error.message}`);
+                if (themeStudioStatus) themeStudioStatus.textContent = "Upload failed";
+                saveButton.disabled = false;
+                return;
+            }
+            document.getElementById("txtThemeBgUrl").value = imageUrl;
+            globalThemeStudioDraft.theme_bg_url = imageUrl;
+            globalThemeWallpaperFile = null;
+            if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
+            globalThemeWallpaperPreviewUrl = "";
+            if (themeFileName) themeFileName.textContent = "No image selected";
+            updateThemeStudioPreview();
+        }
+        if (imageUrl) {
+            try {
+                const parsedUrl = new URL(imageUrl);
+                if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error("Unsupported protocol");
+            } catch {
+                toast("Enter a valid wallpaper image URL");
+                saveButton.disabled = false;
+                if (themeStudioStatus) themeStudioStatus.textContent = "Check wallpaper URL";
+                return;
+            }
+        }
+
+        saveButton.disabled = true;
+        if (themeStudioStatus) themeStudioStatus.textContent = "Publishing theme";
+        try {
+            await setDoc(doc(db, "app_config", "theme"), {
+                theme_bg_url: imageUrl,
+                accent_color: accentColorHex,
+                text_color: textColorHex,
+                card_opacity: opacityValue,
+                enable_particles: isParticlesEnabled,
+                is_custom_theme_active: true,
+                updated_at: new Date().toISOString()
+            }, { merge: true });
+            globalThemeStudioDraft = {
+                theme_bg_url: imageUrl,
+                accent_color: accentColorHex,
+                text_color: textColorHex,
+                card_opacity: opacityValue,
+                enable_particles: isParticlesEnabled
+            };
+            globalThemeData = { ...globalThemeData, ...globalThemeStudioDraft, is_custom_theme_active: true };
+            globalThemeStudioDirty = false;
+            globalThemeWallpaperFile = null;
+            document.getElementById("txtThemeBgUrl").value = imageUrl;
+            if (globalThemeWallpaperPreviewUrl) URL.revokeObjectURL(globalThemeWallpaperPreviewUrl);
+            globalThemeWallpaperPreviewUrl = "";
+            if (themeFileName) themeFileName.textContent = "No image selected";
+            clearFirestoreError("action");
+            toast("Theme Wallpaper Published to Mobile App!");
+            if (themeStudioStatus) themeStudioStatus.textContent = "Theme published";
+            updateThemeStudioPreview();
+        } catch (error) {
+            toast(`Theme wallpaper update failed: ${error.message}`);
+            if (themeStudioStatus) themeStudioStatus.textContent = "Publish failed";
+            reportFirestoreError(error, "action");
+        } finally {
+            saveButton.disabled = false;
         }
     });
 
