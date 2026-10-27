@@ -259,6 +259,33 @@
         </section>
     </template>
 
+    <template id="globalThemeConfigTemplate">
+        <section class="global-theme-card" aria-labelledby="globalThemeHeading">
+            <div class="global-theme-heading">
+                <span class="global-theme-icon" aria-hidden="true"><i class="fa-solid fa-palette"></i></span>
+                <div>
+                    <p class="global-theme-eyebrow">Global appearance</p>
+                    <h4 id="globalThemeHeading">Dynamic App Festival &amp; Luxury Themes</h4>
+                    <p>Choose the app theme delivered to every user.</p>
+                </div>
+            </div>
+            <div class="global-theme-controls">
+                <label class="global-theme-label" for="selectGlobalTheme">App theme</label>
+                <select id="selectGlobalTheme" class="global-theme-select">
+                    <option value="DIWALI_FESTIVE">DIWALI_FESTIVE - Royal Gold Frames, Diya &amp; Festive Theme</option>
+                    <option value="OLED_DARK">OLED_DARK - Pure Minimalist OLED Black #000000</option>
+                    <option value="CYBER_VIOLET">CYBER_VIOLET - VIP Purple &amp; Cyberpunk Neon</option>
+                    <option value="DEFAULT_LIGHT">DEFAULT_LIGHT - Clean Material 3 Light Mode</option>
+                </select>
+                <p class="global-theme-note">This setting updates the theme configuration for all app users.</p>
+                <button class="global-theme-apply" id="btnApplyGlobalTheme" type="button">
+                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                    Apply Theme to All Users
+                </button>
+            </div>
+        </section>
+    </template>
+
     <script type="module" src="admin.js"></script>
 </body>
 </html>

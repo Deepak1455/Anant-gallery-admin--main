@@ -44,10 +44,19 @@ let fallbackPhotosData = [];
 let albumsData = [];
 let usersProfileData = {};
 let appConfigData = { ads_enabled: true };
+let globalThemeData = {};
+let selectedGlobalThemeId = "DEFAULT_LIGHT";
+let globalThemeSelectionDirty = false;
 let appUpdateData = {};
 let appUpdateLoaded = false;
 const dirtyAppUpdateCards = new Set();
 const savingAppUpdateCards = new Set();
+const globalThemeAccents = {
+    DIWALI_FESTIVE: "#D4AF37",
+    OLED_DARK: "#000000",
+    CYBER_VIOLET: "#8B5CF6",
+    DEFAULT_LIGHT: "#6750A4"
+};
 const botNodes = Array.from({ length: 15 }, (_, index) => ({
     id: index + 1,
     status: "unknown",
@@ -541,6 +550,21 @@ function startRealtimeStream() {
         appUpdateLoaded = true;
         if (currentTab === "app_updates") syncAppUpdateForm();
     }, error => reportFirestoreError(error, "app-update"));
+
+    onSnapshot(doc(db, "app_config", "theme"), snap => {
+        clearFirestoreError("theme");
+        globalThemeData = snap.exists() ? snap.data() : {};
+        const activeTheme = globalThemeData.active_theme;
+        if (typeof activeTheme === "string" && Object.hasOwn(globalThemeAccents, activeTheme)) {
+            if (!globalThemeSelectionDirty || activeTheme === selectedGlobalThemeId) {
+                selectedGlobalThemeId = activeTheme;
+                globalThemeSelectionDirty = false;
+            }
+        } else if (!globalThemeSelectionDirty) {
+            selectedGlobalThemeId = "DEFAULT_LIGHT";
+        }
+        if (currentTab === "settings") renderCurrentTab();
+    }, error => reportFirestoreError(error, "theme"));
 }
 
 // --------------------------------------------------------------------------
@@ -910,6 +934,8 @@ function renderSettings(container) {
             </div>
             
             <div style="display:flex; flex-direction:column; gap:20px;">
+                <div id="globalThemeConfigSlot"></div>
+
                 <!-- Global Remote Killswitches -->
                 <div style="background:var(--bg-surface); padding:18px; border-radius:14px;">
                     <h4 style="margin-bottom:6px;">Global App Switches (Realtime)</h4>
@@ -947,6 +973,47 @@ function renderSettings(container) {
             </div>
         </div>
     `;
+
+    const globalThemeTemplate = document.getElementById("globalThemeConfigTemplate");
+    const globalThemeSlot = document.getElementById("globalThemeConfigSlot");
+    if (!(globalThemeTemplate instanceof HTMLTemplateElement) || !globalThemeSlot) {
+        throw new Error("Global theme configuration template is missing");
+    }
+    globalThemeSlot.append(globalThemeTemplate.content.cloneNode(true));
+    const themeSelector = document.getElementById("selectGlobalTheme");
+    const applyThemeButton = document.getElementById("btnApplyGlobalTheme");
+    themeSelector.value = selectedGlobalThemeId;
+    themeSelector.addEventListener("change", () => {
+        selectedGlobalThemeId = themeSelector.value;
+        globalThemeSelectionDirty = true;
+    });
+    applyThemeButton.addEventListener("click", async () => {
+        const selectedThemeId = themeSelector.value;
+        const themeAccentHex = globalThemeAccents[selectedThemeId];
+        if (!themeAccentHex) {
+            toast("Select a valid app theme");
+            return;
+        }
+
+        applyThemeButton.disabled = true;
+        try {
+            await setDoc(doc(db, "app_config", "theme"), {
+                active_theme: selectedThemeId,
+                accent_color: themeAccentHex,
+                theme_updated_at: new Date().toISOString()
+            }, { merge: true });
+            globalThemeData = { ...globalThemeData, active_theme: selectedThemeId, accent_color: themeAccentHex };
+            selectedGlobalThemeId = selectedThemeId;
+            globalThemeSelectionDirty = false;
+            clearFirestoreError("action");
+            toast(`Global Theme Updated: ${selectedThemeId}`);
+        } catch (error) {
+            toast(`Global theme update failed: ${error.message}`);
+            reportFirestoreError(error, "action");
+        } finally {
+            applyThemeButton.disabled = false;
+        }
+    });
 
     const proCardTemplate = document.getElementById("proCardConfigTemplate");
     const proCardSlot = document.getElementById("proCardConfigSlot");
