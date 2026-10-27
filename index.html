@@ -81,6 +81,22 @@
         </div>
     </div>
 
+    <div id="proGrantModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="proGrantModalTitle" style="display:none;">
+        <div class="modal-box">
+            <h3 id="proGrantModalTitle">Choose Anant PRO duration</h3>
+            <p>Select the pass duration to grant this user.</p>
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:18px;">
+                <button class="secondary-action" type="button" data-plan-name="1 Month" data-days="30">1 Month (+30 Days)</button>
+                <button class="secondary-action" type="button" data-plan-name="3 Months" data-days="90">3 Months (+90 Days)</button>
+                <button class="secondary-action" type="button" data-plan-name="6 Months" data-days="180">6 Months (+180 Days)</button>
+                <button class="secondary-action" type="button" data-plan-name="1 Year" data-days="365">1 Year (+365 Days)</button>
+            </div>
+            <div class="modal-btns">
+                <button class="m-btn cancel" id="btnProGrantCancel" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="photoLightbox" class="lightbox-overlay" role="dialog" aria-modal="true" aria-label="Photo preview" hidden>
         <div class="lightbox-panel">
             <div class="lightbox-toolbar">

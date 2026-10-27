@@ -63,6 +63,7 @@ let unauthorizedSignOutInProgress = false;
 let isPurgingTrash = false;
 let lightboxPhotoPath = null;
 let lightboxZoom = 1;
+let pendingProGrantUid = null;
 
 function isAuthorizedAdmin(user) {
     return Boolean(user?.email && AUTHORIZED_ADMINS.includes(user.email.trim().toLowerCase()));
@@ -230,6 +231,37 @@ function formatDate(value) {
     if (!value) return "Unknown date";
     const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
     return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString();
+}
+
+function formatProExpiryDate(value) {
+    if (!value) return "Unknown date";
+    const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
+    if (Number.isNaN(date.getTime())) return "Unknown date";
+    return new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+    }).format(date);
+}
+
+function renderUserMembership(profile) {
+    if (profile.isPro !== true) return '<span class="tag free">Free Tier</span>';
+
+    const expiresAt = !profile.proExpiresAt
+        ? new Date(Number.NaN)
+        : typeof profile.proExpiresAt.toDate === "function"
+            ? profile.proExpiresAt.toDate()
+            : new Date(profile.proExpiresAt);
+    const daysLeft = Number.isNaN(expiresAt.getTime())
+        ? 0
+        : Math.max(0, Math.ceil((expiresAt - new Date()) / (1000 * 60 * 60 * 24)));
+    const planName = escapeHtml(profile.proPlanName || "Anant PRO");
+
+    return `
+        <span class="tag active" style="background:#8b5cf6;">${planName}</span>
+        <span class="tag" style="background:#065f46; color:#34d399; margin-left:6px;">${daysLeft} Days Left</span>
+        <span class="pro-expiry-date" style="display:block; margin-top:6px;">Expiry: ${escapeHtml(formatProExpiryDate(profile.proExpiresAt))}</span>
+    `;
 }
 
 function getPhotoPath(photo) {
@@ -759,13 +791,12 @@ function renderUsers(container) {
                                     <td><span class="tag active">${u.count} Photos</span></td>
                                     <td>${formatSize(u.bytes)}</td>
                                     <td>
-                                        <button class="membership-toggle tag ${isPro ? 'pro' : 'free'}" type="button"
-                                            aria-label="${isPro ? 'Revoke Anant PRO' : 'Grant Anant PRO'} for ${escapeHtml(u.uid)}"
-                                            onclick="window.adminTogglePro(${inlineArg(u.uid)}, ${!isPro})">
-                                            ${isPro ? 'Anant PRO' : 'Free Tier'}
-                                        </button>
+                                        <div class="membership-details">${renderUserMembership(profile)}</div>
                                     </td>
                                     <td>
+                                        <button class="secondary-action" type="button" onclick="window.adminTogglePro(${inlineArg(u.uid)}, ${!isPro})">
+                                            ${isPro ? 'Revoke PRO' : 'Grant PRO'}
+                                        </button>
                                         <button class="action-btn del" type="button" onclick="window.adminWipeUser(${inlineArg(u.uid)})" title="Wipe User Data" aria-label="Wipe data for ${escapeHtml(u.uid)}">
                                             <i class="fa-solid fa-trash-can"></i>
                                         </button>
@@ -787,11 +818,7 @@ function renderUsers(container) {
                         <article class="data-card user-card" data-user-search="${escapeHtml(searchValue)}">
                             <div class="data-card-heading">
                                 <div class="user-card-title"><i class="fa-solid fa-user"></i><span>User account</span></div>
-                                <button class="membership-toggle tag ${isPro ? 'pro' : 'free'}" type="button"
-                                    aria-label="${isPro ? 'Revoke Anant PRO' : 'Grant Anant PRO'} for ${escapeHtml(u.uid)}"
-                                    onclick="window.adminTogglePro(${inlineArg(u.uid)}, ${!isPro})">
-                                    ${isPro ? 'Anant PRO' : 'Free Tier'}
-                                </button>
+                                <div class="membership-details">${renderUserMembership(profile)}</div>
                             </div>
                             <div class="data-field"><span>Email</span>${hasEmail ? copyControl(email, "email") : '<span class="tag hidden" style="background:#374151; color:#9ca3af;"><i class="fa-solid fa-user-secret"></i> Guest / Anonymous</span>'}</div>
                             <div class="data-field"><span>User UID</span>${copyControl(u.uid, "user UID")}</div>
@@ -1469,21 +1496,69 @@ window.adminPreviewPhoto = documentPath => {
     document.getElementById("lightboxClose")?.focus();
 };
 
+function openProGrantModal(uid) {
+    const modal = document.getElementById("proGrantModal");
+    if (!modal) {
+        toast("Unable to open PRO duration selector");
+        return;
+    }
+
+    pendingProGrantUid = uid;
+    modal.style.display = "flex";
+    const close = () => {
+        modal.style.display = "none";
+        pendingProGrantUid = null;
+    };
+
+    document.getElementById("btnProGrantCancel").onclick = close;
+    modal.querySelectorAll("[data-plan-name][data-days]").forEach(button => {
+        button.onclick = () => {
+            const selectedUid = pendingProGrantUid;
+            const planName = button.dataset.planName;
+            const days = Number(button.dataset.days);
+            close();
+            if (selectedUid && planName && Number.isInteger(days) && days > 0) {
+                grantProPass(selectedUid, planName, days);
+            }
+        };
+    });
+}
+
+async function grantProPass(uid, selectedPlanName, days) {
+    try {
+        await setDoc(doc(db, "users", uid), {
+            isPro: true,
+            proPlanName: selectedPlanName,
+            proExpiresAt: new Date(Date.now() + days * 86400000).toISOString()
+        }, { merge: true });
+        clearFirestoreError("action");
+        toast(`Granted ${selectedPlanName} (${days} Days) to user`);
+    } catch (error) {
+        toast(`Error granting PRO: ${error.message}`);
+        reportFirestoreError(error, "action");
+    }
+}
+
 window.adminTogglePro = async (uid, shouldBePro) => {
+    if (shouldBePro) {
+        openProGrantModal(uid);
+        return;
+    }
+
     confirmAction(
-        shouldBePro ? "Grant Anant PRO?" : "Revoke Anant PRO?",
-        `Change ${uid} to ${shouldBePro ? "Anant PRO" : "Free Tier"}? This updates the user's membership immediately.`,
+        "Revoke Anant PRO?",
+        `Change ${uid} to Free Tier? This updates the user's membership immediately.`,
         async () => {
             try {
-                await setDoc(doc(db, "users", uid), { isPro: shouldBePro }, { merge: true });
+                await setDoc(doc(db, "users", uid), { isPro: false }, { merge: true });
                 clearFirestoreError("action");
-                toast(`User updated: ${shouldBePro ? "PRO Active" : "Free Tier"}`);
+                toast("User updated: Free Tier");
             } catch (error) {
                 toast(`Error updating user: ${error.message}`);
                 reportFirestoreError(error, "action");
             }
         },
-        shouldBePro ? "Grant PRO" : "Revoke PRO"
+        "Revoke PRO"
     );
 };
 
