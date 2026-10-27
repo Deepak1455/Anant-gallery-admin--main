@@ -338,6 +338,74 @@
                     Apply Theme Wallpaper to Mobile App
                 </button>
             </section>
+
+            <section class="modular-theme-studio" aria-labelledby="modularThemeHeading">
+                <header class="modular-theme-heading">
+                    <div class="modular-theme-title">
+                        <span class="global-theme-icon" aria-hidden="true"><i class="fa-solid fa-layer-group"></i></span>
+                        <div>
+                            <p class="global-theme-eyebrow">Advanced customization</p>
+                            <h5 id="modularThemeHeading">Modular Multi-Layer Theme Studio</h5>
+                            <p>Customize app surfaces independently with wallpaper URLs and color overrides.</p>
+                        </div>
+                    </div>
+                    <label class="modular-theme-toggle" for="switchModularTheme">
+                        <input id="switchModularTheme" type="checkbox">
+                        <span class="modular-theme-toggle-track" aria-hidden="true"></span>
+                        <span>Enable Modular Custom Theme</span>
+                    </label>
+                </header>
+
+                <div class="modular-theme-assets">
+                    <label class="modular-asset-card" for="txtModularRootBg">
+                        <span class="modular-asset-preview"><img id="previewModularRootBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
+                        <span class="modular-asset-copy"><strong>Full-Screen Background Wallpaper</strong><input id="txtModularRootBg" type="url" inputmode="url" placeholder="https://example.com/background.jpg" autocomplete="url" aria-label="Full-Screen Background Wallpaper URL"></span>
+                    </label>
+                    <label class="modular-asset-card" for="txtModularHeaderBg">
+                        <span class="modular-asset-preview"><img id="previewModularHeaderBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
+                        <span class="modular-asset-copy"><strong>Top Header &amp; App Name Banner Wallpaper</strong><input id="txtModularHeaderBg" type="url" inputmode="url" placeholder="https://example.com/header.jpg" autocomplete="url" aria-label="Top Header and App Name Banner Wallpaper URL"></span>
+                    </label>
+                    <label class="modular-asset-card" for="txtModularBottomNavBg">
+                        <span class="modular-asset-preview"><img id="previewModularBottomNavBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
+                        <span class="modular-asset-copy"><strong>Floating Bottom Navigation Dock Skin</strong><input id="txtModularBottomNavBg" type="url" inputmode="url" placeholder="https://example.com/navigation.jpg" autocomplete="url" aria-label="Floating Bottom Navigation Dock Skin URL"></span>
+                    </label>
+                    <label class="modular-asset-card" for="txtModularAlbumCardBg">
+                        <span class="modular-asset-preview"><img id="previewModularAlbumCardBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
+                        <span class="modular-asset-copy"><strong>Albums &amp; Folders Card Texture</strong><input id="txtModularAlbumCardBg" type="url" inputmode="url" placeholder="https://example.com/albums.jpg" autocomplete="url" aria-label="Albums and Folders Card Texture URL"></span>
+                    </label>
+                    <label class="modular-asset-card" for="txtModularTextCardBg">
+                        <span class="modular-asset-preview"><img id="previewModularTextCardBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
+                        <span class="modular-asset-copy"><strong>Text &amp; Announcement Card Skin</strong><input id="txtModularTextCardBg" type="url" inputmode="url" placeholder="https://example.com/text-card.jpg" autocomplete="url" aria-label="Text and Announcement Card Skin URL"></span>
+                    </label>
+                    <label class="modular-asset-card" for="txtModularPillBg">
+                        <span class="modular-asset-preview"><img id="previewModularPillBg" alt="" hidden><i class="fa-solid fa-image" aria-hidden="true"></i></span>
+                        <span class="modular-asset-copy"><strong>Count &amp; Metrics Pill Capsule Skin</strong><input id="txtModularPillBg" type="url" inputmode="url" placeholder="https://example.com/metrics.jpg" autocomplete="url" aria-label="Count and Metrics Pill Capsule Skin URL"></span>
+                    </label>
+                </div>
+
+                <div class="modular-theme-colors">
+                    <label class="theme-studio-field" for="txtModAccent">
+                        <span>Accent color</span>
+                        <input id="txtModAccent" type="text" value="#FFD700" maxlength="7" placeholder="#FFD700" autocomplete="off" spellcheck="false">
+                    </label>
+                    <label class="theme-studio-field" for="txtModTitle">
+                        <span>Title text color</span>
+                        <input id="txtModTitle" type="text" value="#FFF3C4" maxlength="7" placeholder="#FFF3C4" autocomplete="off" spellcheck="false">
+                    </label>
+                    <label class="theme-studio-field" for="txtModMetric">
+                        <span>Metric text color</span>
+                        <input id="txtModMetric" type="text" value="#FFFFFF" maxlength="7" placeholder="#FFFFFF" autocomplete="off" spellcheck="false">
+                    </label>
+                </div>
+
+                <footer class="modular-theme-actions">
+                    <span class="modular-theme-status" id="modularThemeStatus" role="status">Theme settings ready</span>
+                    <button class="global-theme-apply modular-theme-deploy" id="btnDeployModularTheme" type="button">
+                        <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                        Deploy Full Theme to Mobile App
+                    </button>
+                </footer>
+            </section>
         </section>
     </template>
 

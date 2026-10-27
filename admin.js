@@ -57,6 +57,28 @@ let globalThemeStudioDraft = {
     card_opacity: 75,
     enable_particles: false
 };
+let modularThemeData = {};
+let modularThemeDirty = false;
+let modularThemeDraft = {
+    is_modular_theme_active: false,
+    root_bg_url: "",
+    header_bg_url: "",
+    bottom_nav_bg_url: "",
+    album_card_bg_url: "",
+    text_card_bg_url: "",
+    metric_pill_bg_url: "",
+    accent_color: "#FFD700",
+    title_color: "#FFF3C4",
+    metric_color: "#FFFFFF"
+};
+const modularThemeUrlFields = {
+    txtModularRootBg: { key: "root_bg_url", preview: "previewModularRootBg" },
+    txtModularHeaderBg: { key: "header_bg_url", preview: "previewModularHeaderBg" },
+    txtModularBottomNavBg: { key: "bottom_nav_bg_url", preview: "previewModularBottomNavBg" },
+    txtModularAlbumCardBg: { key: "album_card_bg_url", preview: "previewModularAlbumCardBg" },
+    txtModularTextCardBg: { key: "text_card_bg_url", preview: "previewModularTextCardBg" },
+    txtModularPillBg: { key: "metric_pill_bg_url", preview: "previewModularPillBg" }
+};
 let appUpdateData = {};
 let appUpdateLoaded = false;
 const dirtyAppUpdateCards = new Set();
@@ -590,6 +612,26 @@ function startRealtimeStream() {
             if (!globalThemeStudioDirty) syncThemeStudioControls();
         }
     }, error => reportFirestoreError(error, "theme"));
+
+    onSnapshot(doc(db, "app_config", "theme_engine"), snap => {
+        clearFirestoreError("theme-engine");
+        modularThemeData = snap.exists() ? snap.data() : {};
+        if (!modularThemeDirty) {
+            modularThemeDraft = {
+                is_modular_theme_active: modularThemeData.is_modular_theme_active === true,
+                root_bg_url: typeof modularThemeData.root_bg_url === "string" ? modularThemeData.root_bg_url : "",
+                header_bg_url: typeof modularThemeData.header_bg_url === "string" ? modularThemeData.header_bg_url : "",
+                bottom_nav_bg_url: typeof modularThemeData.bottom_nav_bg_url === "string" ? modularThemeData.bottom_nav_bg_url : "",
+                album_card_bg_url: typeof modularThemeData.album_card_bg_url === "string" ? modularThemeData.album_card_bg_url : "",
+                text_card_bg_url: typeof modularThemeData.text_card_bg_url === "string" ? modularThemeData.text_card_bg_url : "",
+                metric_pill_bg_url: typeof modularThemeData.metric_pill_bg_url === "string" ? modularThemeData.metric_pill_bg_url : "",
+                accent_color: typeof modularThemeData.accent_color === "string" ? modularThemeData.accent_color : "#FFD700",
+                title_color: typeof modularThemeData.title_color === "string" ? modularThemeData.title_color : "#FFF3C4",
+                metric_color: typeof modularThemeData.metric_color === "string" ? modularThemeData.metric_color : "#FFFFFF"
+            };
+        }
+        if (currentTab === "settings" && !modularThemeDirty) syncModularThemeControls();
+    }, error => reportFirestoreError(error, "theme-engine"));
 }
 
 function isHexColor(value) {
@@ -617,6 +659,29 @@ function syncThemeStudioControls() {
     particlesInput.checked = globalThemeStudioDraft.enable_particles;
     if (fileName) fileName.textContent = globalThemeWallpaperFile?.name || "No image selected";
     updateThemeStudioPreview();
+}
+
+function syncModularThemeControls() {
+    const toggle = document.getElementById("switchModularTheme");
+    const accentInput = document.getElementById("txtModAccent");
+    const titleInput = document.getElementById("txtModTitle");
+    const metricInput = document.getElementById("txtModMetric");
+    if (!toggle || !accentInput || !titleInput || !metricInput) return;
+
+    toggle.checked = modularThemeDraft.is_modular_theme_active;
+    accentInput.value = modularThemeDraft.accent_color;
+    titleInput.value = modularThemeDraft.title_color;
+    metricInput.value = modularThemeDraft.metric_color;
+    Object.entries(modularThemeUrlFields).forEach(([inputId, field]) => {
+        const input = document.getElementById(inputId);
+        const preview = document.getElementById(field.preview);
+        if (!input || !preview) return;
+        const url = normalizeThemeWallpaperUrl(modularThemeDraft[field.key]);
+        input.value = url;
+        preview.src = url;
+        preview.hidden = !url;
+        preview.classList.toggle("has-preview", Boolean(url));
+    });
 }
 
 function updateThemeStudioPreview() {
@@ -1095,6 +1160,7 @@ function renderSettings(container) {
     const applyThemeButton = document.getElementById("btnApplyGlobalTheme");
     themeSelector.value = selectedGlobalThemeId;
     syncThemeStudioControls();
+    syncModularThemeControls();
     themeSelector.addEventListener("change", () => {
         selectedGlobalThemeId = themeSelector.value;
         globalThemeSelectionDirty = true;
@@ -1253,6 +1319,82 @@ function renderSettings(container) {
             reportFirestoreError(error, "action");
         } finally {
             saveButton.disabled = false;
+        }
+    });
+
+    Object.entries(modularThemeUrlFields).forEach(([inputId, field]) => {
+        const input = document.getElementById(inputId);
+        input.value = normalizeThemeWallpaperUrl(modularThemeDraft[field.key]);
+        input.addEventListener("input", () => {
+            const sanitizedUrl = normalizeThemeWallpaperUrl(input.value);
+            if (input.value !== sanitizedUrl) input.value = sanitizedUrl;
+            modularThemeDraft[field.key] = sanitizedUrl;
+            modularThemeDirty = true;
+            const preview = document.getElementById(field.preview);
+            preview.src = sanitizedUrl;
+            preview.hidden = !sanitizedUrl;
+            preview.classList.toggle("has-preview", Boolean(sanitizedUrl));
+        });
+    });
+    const modularToggle = document.getElementById("switchModularTheme");
+    const modularAccent = document.getElementById("txtModAccent");
+    const modularTitle = document.getElementById("txtModTitle");
+    const modularMetric = document.getElementById("txtModMetric");
+    modularToggle.checked = modularThemeDraft.is_modular_theme_active;
+    modularAccent.value = modularThemeDraft.accent_color;
+    modularTitle.value = modularThemeDraft.title_color;
+    modularMetric.value = modularThemeDraft.metric_color;
+    [
+        [modularAccent, "accent_color"],
+        [modularTitle, "title_color"],
+        [modularMetric, "metric_color"]
+    ].forEach(([input, key]) => {
+        input.addEventListener("input", () => {
+            modularThemeDraft[key] = input.value.trim();
+            modularThemeDirty = true;
+        });
+    });
+    modularToggle.addEventListener("change", () => {
+        modularThemeDraft.is_modular_theme_active = modularToggle.checked;
+        modularThemeDirty = true;
+    });
+    document.getElementById("btnDeployModularTheme")?.addEventListener("click", async event => {
+        const deployButton = event.currentTarget;
+        const status = document.getElementById("modularThemeStatus");
+        const payload = {
+            is_modular_theme_active: modularToggle.checked,
+            root_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularRootBg").value),
+            header_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularHeaderBg").value),
+            bottom_nav_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularBottomNavBg").value),
+            album_card_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularAlbumCardBg").value),
+            text_card_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularTextCardBg").value),
+            metric_pill_bg_url: normalizeThemeWallpaperUrl(document.getElementById("txtModularPillBg").value),
+            accent_color: modularAccent.value.trim(),
+            title_color: modularTitle.value.trim(),
+            metric_color: modularMetric.value.trim(),
+            updated_at: new Date().toISOString()
+        };
+        Object.entries(modularThemeUrlFields).forEach(([inputId, field]) => {
+            document.getElementById(inputId).value = payload[field.key];
+        });
+
+        deployButton.disabled = true;
+        if (status) status.textContent = "Deploying theme";
+        try {
+            await setDoc(doc(db, "app_config", "theme_engine"), payload, { merge: true });
+            modularThemeData = { ...modularThemeData, ...payload };
+            modularThemeDraft = { ...payload };
+            modularThemeDirty = false;
+            syncModularThemeControls();
+            clearFirestoreError("action");
+            if (status) status.textContent = "Theme deployed";
+            toast("Modular Theme Successfully Deployed to All Users");
+        } catch (error) {
+            if (status) status.textContent = "Deployment failed";
+            toast(`Modular theme deployment failed: ${error.message}`);
+            reportFirestoreError(error, "action");
+        } finally {
+            deployButton.disabled = false;
         }
     });
 
