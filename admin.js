@@ -39,6 +39,7 @@ const AUTHORIZED_ADMINS = [
 
 let currentTab = "dashboard";
 let userFilter = "";
+let userActivityFilter = "all";
 let photosData = [];
 let fallbackPhotosData = [];
 let albumsData = [];
@@ -231,6 +232,90 @@ function formatDate(value) {
     if (!value) return "Unknown date";
     const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
     return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString();
+}
+
+function getLocalDateString(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function isUserActiveToday(profile, todayStr = getLocalDateString()) {
+    return profile.lastActiveDate === todayStr;
+}
+
+function formatLastActive(profile) {
+    let date = null;
+    const timestamp = profile.lastActiveTimestamp;
+
+    if (timestamp && typeof timestamp.toDate === "function") {
+        date = timestamp.toDate();
+    } else if (typeof timestamp === "string" || typeof timestamp === "number") {
+        const dateOnlyMatch = typeof timestamp === "string" && timestamp.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dateOnlyMatch) {
+            const [, yearValue, monthValue, dayValue] = dateOnlyMatch;
+            const year = Number(yearValue);
+            const month = Number(monthValue);
+            const day = Number(dayValue);
+            date = new Date(year, month - 1, day);
+            if (
+                date.getFullYear() !== year ||
+                date.getMonth() !== month - 1 ||
+                date.getDate() !== day
+            ) {
+                date = null;
+            }
+        } else {
+            date = new Date(timestamp);
+        }
+    }
+
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        const dateValue = profile.lastActiveDate;
+        if (typeof dateValue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+            const [year, month, day] = dateValue.split("-").map(Number);
+            const fallbackDate = new Date(year, month - 1, day);
+            if (
+                fallbackDate.getFullYear() === year &&
+                fallbackDate.getMonth() === month - 1 &&
+                fallbackDate.getDate() === day
+            ) {
+                date = fallbackDate;
+            }
+        }
+    }
+
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "Unknown";
+    if (getLocalDateString(date) === getLocalDateString()) {
+        return `Today, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    }
+    return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function renderUserActivity(profile, todayStr) {
+    const activeToday = isUserActiveToday(profile, todayStr);
+    const activityBadge = activeToday
+        ? '<span class="tag active user-status-active"><i class="fa-solid fa-circle-check"></i> ACTIVE TODAY</span>'
+        : '<span class="tag inactive user-status-inactive"><i class="fa-solid fa-clock"></i> INACTIVE</span>';
+    const testerBadge = profile.isTester === true
+        ? '<span class="tag tester"><i class="fa-solid fa-vial"></i> Closed Tester</span>'
+        : "";
+
+    return { activeToday, activityBadge, testerBadge };
+}
+
+function renderUserAuthProvider(profile) {
+    const email = typeof profile.email === "string" ? profile.email.trim() : "";
+    const provider = [profile.providerId, profile.authProvider]
+        .filter(value => typeof value === "string")
+        .join(" ")
+        .toLowerCase();
+    const isGoogleAuth = /@(gmail\.com|googlemail\.com)$/i.test(email) || provider.includes("google");
+
+    return isGoogleAuth
+        ? '<span class="tag user-provider-google"><i class="fa-brands fa-google"></i> Google Sign-In</span>'
+        : '<span class="tag user-provider-email"><i class="fa-solid fa-envelope"></i> Email Auth</span>';
 }
 
 function formatProExpiryDate(value) {
@@ -590,10 +675,14 @@ function renderDashboard(container) {
     const totalPhotos = allPhotos.length;
     const inTrash = photosData.filter(p => p.isDeleted === true).length;
     const totalSize = allPhotos.reduce((a, b) => a + (b.fileSize || 3.5 * 1024 * 1024), 0);
-    const usersCount = new Set([
+    const totalUsers = new Set([
         ...Object.keys(usersProfileData),
         ...allPhotos.map(p => p.uid).filter(Boolean)
     ]).size;
+    const todayStr = getLocalDateString();
+    const todayActiveCount = Object.values(usersProfileData)
+        .filter(profile => isUserActiveToday(profile, todayStr))
+        .length;
     const errorBanner = firestoreError ? `
         <div class="firestore-error" role="alert">
             <strong><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(firestoreError.title)}</strong>
@@ -622,7 +711,15 @@ function renderDashboard(container) {
                 <div class="m-icon" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);"><i class="fa-solid fa-users"></i></div>
                 <div class="m-info">
                     <h4>Total Users</h4>
-                    <div class="m-val">${usersCount}</div>
+                    <div class="m-val">${totalUsers}</div>
+                </div>
+            </div>
+            <div class="m-card active-users-card">
+                <div class="m-icon" style="background:linear-gradient(135deg,#10b981,#059669);"><i class="fa-solid fa-user-check"></i></div>
+                <div class="m-info">
+                    <h4>Active Today</h4>
+                    <div class="m-val">${todayActiveCount} / ${totalUsers}</div>
+                    <p class="m-subtitle">Live Closed Testers Active</p>
                 </div>
             </div>
             <div class="m-card">
@@ -743,6 +840,7 @@ function renderPhotoTableRows(list) {
 
 // TAB 3: USER MANAGEMENT & ANANT PRO CONTROLLER
 function renderUsers(container) {
+    const todayStr = getLocalDateString();
     const userMap = new Map();
     getAllPhotos().forEach(p => {
         if (!p.uid) return;
@@ -761,20 +859,39 @@ function renderUsers(container) {
     });
 
     const userList = Array.from(userMap.values());
+    const todayActiveCount = userList.filter(user =>
+        isUserActiveToday(usersProfileData[user.uid] || {}, todayStr)
+    ).length;
+    const inactiveCount = userList.length - todayActiveCount;
 
     container.innerHTML = `
         <div class="table-board">
             <div class="t-header">
-                <h3><i class="fa-solid fa-users" style="color:var(--accent);"></i> Registered Users & Pro Membership (${userList.length})</h3>
+                <h3><i class="fa-solid fa-users" style="color:var(--accent);"></i> Closed Testers & User Management (${userList.length})</h3>
                 <div class="search-box">
-                    <input type="search" id="userFilter" value="${escapeHtml(userFilter)}" placeholder="Search email or UID..." aria-label="Search users by email or UID">
+                    <input type="search" id="userFilter" value="${escapeHtml(userFilter)}" placeholder="Search Gmail, name, or UID..." aria-label="Search users by Gmail, display name, or UID">
                 </div>
+            </div>
+            <div class="user-activity-filters" role="group" aria-label="Filter users by activity">
+                <button class="user-activity-filter${userActivityFilter === "all" ? " active" : ""}" type="button" data-activity-filter="all" aria-pressed="${userActivityFilter === "all"}">
+                    <i class="fa-solid fa-users"></i> All Testers <span>${userList.length}</span>
+                </button>
+                <button class="user-activity-filter${userActivityFilter === "active" ? " active" : ""}" type="button" data-activity-filter="active" aria-pressed="${userActivityFilter === "active"}">
+                    <i class="fa-solid fa-circle-check"></i> Active Today <span>${todayActiveCount}</span>
+                </button>
+                <button class="user-activity-filter${userActivityFilter === "inactive" ? " active" : ""}" type="button" data-activity-filter="inactive" aria-pressed="${userActivityFilter === "inactive"}">
+                    <i class="fa-solid fa-clock"></i> Inactive <span>${inactiveCount}</span>
+                </button>
             </div>
             <div class="desktop-table-wrap">
                 <table class="admin-table">
                     <thead>
                         <tr>
-                            <th>User UID / Email</th>
+                            <th>Gmail ID / User</th>
+                            <th>Sign-In Provider</th>
+                            <th>Activity</th>
+                            <th>Last Active</th>
+                            <th>App Build</th>
                             <th>Photos</th>
                             <th>Storage</th>
                             <th>Membership</th>
@@ -785,17 +902,24 @@ function renderUsers(container) {
                         ${userList.map(u => {
                             const profile = usersProfileData[u.uid] || {};
                             const isPro = profile.isPro === true;
+                            const { activeToday, activityBadge, testerBadge } = renderUserActivity(profile, todayStr);
                             const email = typeof profile.email === "string" ? profile.email.trim() : "";
+                            const displayName = typeof profile.displayName === "string" ? profile.displayName.trim() : "";
                             const hasEmail = email && email.toLowerCase() !== "email unavailable";
-                            const searchValue = `${hasEmail ? email : "Guest Anonymous"} ${u.uid}`.toLowerCase();
+                            const userLabel = hasEmail ? email : (displayName || "Guest / Anonymous");
+                            const searchValue = `${email} ${displayName} ${u.uid}`.toLowerCase();
                             return `
-                                <tr data-user-search="${escapeHtml(searchValue)}">
+                                <tr data-user-search="${escapeHtml(searchValue)}" data-user-activity="${activeToday ? "active" : "inactive"}">
                                     <td>
                                         <div class="user-identity">
-                                            <strong>${hasEmail ? copyControl(email, "email") : '<span class="tag hidden" style="background:#374151; color:#9ca3af;"><i class="fa-solid fa-user-secret"></i> Guest / Anonymous</span>'}</strong>
+                                            <strong class="user-email">${copyControl(userLabel, hasEmail ? "Gmail ID" : "display name")}</strong>
                                             ${copyControl(u.uid, "user UID")}
                                         </div>
                                     </td>
+                                    <td>${renderUserAuthProvider(profile)}</td>
+                                    <td><div class="user-activity-badges">${activityBadge}${testerBadge}</div></td>
+                                    <td>${escapeHtml(formatLastActive(profile))}</td>
+                                    <td>v${escapeHtml(profile.appVersion || "1.0.0")}</td>
                                     <td><span class="tag active">${u.count} Photos</span></td>
                                     <td>${formatSize(u.bytes)}</td>
                                     <td>
@@ -819,16 +943,23 @@ function renderUsers(container) {
                 ${userList.map(u => {
                     const profile = usersProfileData[u.uid] || {};
                     const isPro = profile.isPro === true;
+                    const { activeToday, activityBadge, testerBadge } = renderUserActivity(profile, todayStr);
                     const email = typeof profile.email === "string" ? profile.email.trim() : "";
+                    const displayName = typeof profile.displayName === "string" ? profile.displayName.trim() : "";
                     const hasEmail = email && email.toLowerCase() !== "email unavailable";
-                    const searchValue = `${hasEmail ? email : "Guest Anonymous"} ${u.uid}`.toLowerCase();
+                    const userLabel = hasEmail ? email : (displayName || "Guest / Anonymous");
+                    const searchValue = `${email} ${displayName} ${u.uid}`.toLowerCase();
                     return `
-                        <article class="data-card user-card" data-user-search="${escapeHtml(searchValue)}">
+                        <article class="data-card user-card" data-user-search="${escapeHtml(searchValue)}" data-user-activity="${activeToday ? "active" : "inactive"}">
                             <div class="data-card-heading">
                                 <div class="user-card-title"><i class="fa-solid fa-user"></i><span>User account</span></div>
                                 <div class="membership-details">${renderUserMembership(profile)}</div>
                             </div>
-                            <div class="data-field"><span>Email</span>${hasEmail ? copyControl(email, "email") : '<span class="tag hidden" style="background:#374151; color:#9ca3af;"><i class="fa-solid fa-user-secret"></i> Guest / Anonymous</span>'}</div>
+                            <div class="data-field"><span>Gmail ID</span><strong class="user-email">${copyControl(userLabel, hasEmail ? "Gmail ID" : "display name")}</strong></div>
+                            <div class="data-field"><span>Sign-In</span>${renderUserAuthProvider(profile)}</div>
+                            <div class="data-field"><span>Activity</span><div class="user-activity-badges">${activityBadge}${testerBadge}</div></div>
+                            <div class="data-field"><span>Last Active</span><span>${escapeHtml(formatLastActive(profile))}</span></div>
+                            <div class="data-field"><span>App Build</span><span>v${escapeHtml(profile.appVersion || "1.0.0")}</span></div>
                             <div class="data-field"><span>User UID</span>${copyControl(u.uid, "user UID")}</div>
                             <div class="user-stats">
                                 <span><strong>${u.count}</strong> Photos</span>
@@ -850,13 +981,31 @@ function renderUsers(container) {
         </div>
     `;
 
-    document.getElementById("userFilter")?.addEventListener("input", event => {
-        userFilter = event.target.value;
+    const applyUserFilters = () => {
         const search = userFilter.toLowerCase().trim();
         container.querySelectorAll("[data-user-search]").forEach(item => {
-            item.hidden = !item.dataset.userSearch.includes(search);
+            const matchesSearch = item.dataset.userSearch.includes(search);
+            const matchesActivity = userActivityFilter === "all" || item.dataset.userActivity === userActivityFilter;
+            item.hidden = !matchesSearch || !matchesActivity;
+        });
+    };
+
+    document.getElementById("userFilter")?.addEventListener("input", event => {
+        userFilter = event.target.value;
+        applyUserFilters();
+    });
+    container.querySelectorAll("[data-activity-filter]").forEach(button => {
+        button.addEventListener("click", () => {
+            userActivityFilter = button.dataset.activityFilter;
+            container.querySelectorAll("[data-activity-filter]").forEach(filterButton => {
+                const isSelected = filterButton === button;
+                filterButton.classList.toggle("active", isSelected);
+                filterButton.setAttribute("aria-pressed", String(isSelected));
+            });
+            applyUserFilters();
         });
     });
+    applyUserFilters();
 }
 
 // TAB 4: ALBUMS

@@ -379,6 +379,11 @@ html, body {
 
 .m-info h4 { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
 .m-info .m-val { font-size: 1.6rem; font-weight: 800; margin-top: 2px; }
+.active-users-card {
+    border-color: rgba(16, 185, 129, 0.32);
+    background: linear-gradient(145deg, rgba(16, 185, 129, 0.09), var(--bg-card) 68%);
+}
+.m-info .m-subtitle { margin-top: 3px; color: #6ee7b7; font-size: 0.72rem; font-weight: 500; }
 
 /* 📑 DATA TABLES */
 .table-board {
@@ -408,6 +413,50 @@ html, body {
     font-size: 0.85rem;
     outline: none;
 }
+
+.user-activity-filters {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: -2px 0 16px;
+}
+.user-activity-filter {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    background: linear-gradient(145deg, #101624, #000);
+    color: #a3a3a3;
+    font: 600 0.82rem 'Outfit', sans-serif;
+    cursor: pointer;
+    transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.user-activity-filter:hover,
+.user-activity-filter:focus-visible {
+    border-color: rgba(16, 185, 129, 0.45);
+    color: #e2e8f0;
+    outline: none;
+}
+.user-activity-filter.active {
+    border-color: rgba(16, 185, 129, 0.42);
+    background: rgba(16, 185, 129, 0.12);
+    color: #6ee7b7;
+}
+.user-activity-filter span {
+    min-width: 24px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #f8fafc;
+    font-size: 0.72rem;
+    text-align: center;
+}
+.user-activity-filter.active span { background: rgba(16, 185, 129, 0.2); }
 
 .admin-table {
     width: 100%;
@@ -446,10 +495,22 @@ html, body {
     font-weight: 700;
 }
 .tag.active { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.tag.inactive { background: #262626; color: #a3a3a3; }
+.tag.tester { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+.tag.user-provider-google { border: 1px solid #3b82f6; background: #1e293b; color: #60a5fa; }
+.tag.user-provider-email { background: #1f2937; color: #9ca3af; }
+.tag.user-status-active { border: 1px solid #10b981; background: rgba(16, 185, 129, 0.18); color: #34d399; }
+.tag.user-status-inactive { border: 1px solid #333; background: #1e1e1e; color: #a3a3a3; }
 .tag.trash { background: rgba(239, 68, 68, 0.15); color: #f87171; }
 .tag.hidden { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
 
 .desktop-table-wrap { width: 100%; overflow-x: auto; }
+[data-user-search][hidden] { display: none !important; }
+.user-activity-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.user-activity-badges .tag { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.user-email { display: block; min-width: 0; color: #f8fafc; font-weight: 800; }
+.user-email .copy-value { width: 100%; }
+.user-card .data-field > span:last-child:not(:first-child) { overflow-wrap: anywhere; }
 .copy-value {
     display: inline-flex;
     align-items: center;
@@ -1165,11 +1226,17 @@ html, body {
     .m-info { min-width: 0; }
     .m-info h4 { font-size: 0.62rem; }
     .m-info .m-val { overflow-wrap: anywhere; font-size: 1.08rem; }
+    .m-info .m-subtitle { font-size: 0.6rem; }
     .table-board { min-width: 0; padding: 14px; border-radius: 18px; background: #000; }
     .t-header { align-items: flex-start; }
     .t-header h3 { min-width: 0; font-size: 0.94rem; }
     .search-box { width: 100%; }
     .search-box input { width: 100%; min-height: 42px; }
+    .user-activity-filters { gap: 6px; margin: -2px 0 13px; }
+    .user-activity-filter { min-height: 44px; flex-wrap: wrap; gap: 4px 6px; padding: 7px 5px; border-radius: 10px; font-size: 0.65rem; }
+    .user-activity-filter span { min-width: 20px; padding: 1px 5px; font-size: 0.64rem; }
+    .user-activity-badges { gap: 4px; }
+    .user-activity-badges .tag { font-size: 0.62rem; }
     .desktop-table-wrap { display: none; }
     .mobile-card-list { display: grid; gap: 11px; }
     .data-card { width: 100%; background: #000; }
