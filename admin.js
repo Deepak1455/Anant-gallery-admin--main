@@ -241,8 +241,21 @@ function getLocalDateString(date = new Date()) {
     return `${year}-${month}-${day}`;
 }
 
-function isUserActiveToday(profile, todayStr = getLocalDateString()) {
-    return profile.lastActiveDate === todayStr;
+function isUserActiveToday(profile, todayStr = getLocalDateString(), now = Date.now()) {
+    if (profile.lastActiveDate === todayStr) return true;
+
+    const lastActiveTimestamp = profile.lastActiveTimestamp;
+    let lastActiveTime = Number.NaN;
+    if (lastActiveTimestamp && typeof lastActiveTimestamp.toDate === "function") {
+        lastActiveTime = lastActiveTimestamp.toDate().getTime();
+    } else if (lastActiveTimestamp instanceof Date) {
+        lastActiveTime = lastActiveTimestamp.getTime();
+    } else if (typeof lastActiveTimestamp === "string") {
+        lastActiveTime = Date.parse(lastActiveTimestamp);
+    }
+
+    const elapsed = now - lastActiveTime;
+    return Number.isFinite(lastActiveTime) && elapsed >= 0 && elapsed <= 24 * 60 * 60 * 1000;
 }
 
 function formatLastActive(profile) {
